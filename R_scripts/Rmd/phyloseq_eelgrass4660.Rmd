@@ -1,0 +1,196 @@
+---
+title: "Eelgrass table rarefied 4660 sequences per sample to generate barplot"
+author: "DSB"
+output: pdf_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, include = TRUE, fig.show=TRUE) #global options
+```
+
+Package versions for phyloseq, ggplot2, plyr, data.table, tidyverse, knitr
+```{r, echo=FALSE, message=FALSE}
+library(phyloseq); packageVersion("phyloseq") 
+library(ggplot2); packageVersion("ggplot2")
+library(plyr); packageVersion("plyr")
+library(data.table); packageVersion("data.table")
+library(tidyverse); packageVersion("tidyverse")
+library(knitr); packageVersion(("knitr"))
+gsub("[[:punct:][:space:]]", "-", Sys.time())
+```
+
+```{r read in data}
+Eelgrass4660PhyloseqObj <- readRDS(file = "../../phyloseq_object/Eelgrass4660PhyloseqObj.rds")
+
+#order factor levels
+sample_data(Eelgrass4660PhyloseqObj)$RegionName <-factor(sample_data(Eelgrass4660PhyloseqObj)$RegionName, levels=c("Alaska", "British Columbia", "Washington", "Oregon", "Bodega", "San Diego"))
+
+#order factor levels
+sample_data(Eelgrass4660PhyloseqObj)$Region <- factor(sample_data(Eelgrass4660PhyloseqObj)$Region, levels=c("AK", "BC", "WA", "OR", "BB", "SD"))
+
+```
+
+Summary of phyloseq object
+```{r summarize}
+Eelgrass4660PhyloseqObj #393 samples
+```
+
+``````{r barplot order, warning=FALSE}
+#merge ESVs that have the same classification at taxonomic rank Order
+Eelgrass4660PhyloseqObjGlomOrder = tax_glom(Eelgrass4660PhyloseqObj, taxrank = "Order", NArm = FALSE)
+# print phyloseq object summary
+Eelgrass4660PhyloseqObjGlomOrder # 200 taxa 393 samples
+# check sample sums equal 4660 seqs/sample
+sample_sums(Eelgrass4660PhyloseqObjGlomOrder)
+
+# psmelt to melt wide to long format of taxonomy table and merge with dataframe of metadata
+Eelgrass4660PhyloseqObjGlomOrderdf = psmelt(Eelgrass4660PhyloseqObjGlomOrder)
+
+# vector of tableau20 hexidecimal codes for colors
+col2 =  c("#4E79A7", "#A0CBE8", "#F28E2B", "#FFBE7D", "#59A14F", "#8CD17D", "#B6992D", "#F1CE63", "#499894", "#86BCB6", "#E15759", "#FF9D9A", "#79706E", "#BAB0AC", "#D37295", "#FABFD2", "#B07AA1", "#D4A6C8", "#9D7660", "#D7B5A6")
+
+# print unique factor levels
+unique(Eelgrass4660PhyloseqObjGlomOrderdf$TissueType)
+# rename levels of factor for plot
+Eelgrass4660PhyloseqObjGlomOrderdf$TissueType <- gsub("green tissue lesioned blade", "GTLB", Eelgrass4660PhyloseqObjGlomOrderdf$TissueType)
+Eelgrass4660PhyloseqObjGlomOrderdf$TissueType <- gsub("green tissue non-lesioned blade", "non-LB", Eelgrass4660PhyloseqObjGlomOrderdf$TissueType)
+Eelgrass4660PhyloseqObjGlomOrderdf$TissueType <- gsub("lesion tissue", "Lesion", Eelgrass4660PhyloseqObjGlomOrderdf$TissueType)
+
+# subset dataframe by columns of interest
+Eelgrass4660PhyloseqObjGlomOrderdfSubset <- subset(Eelgrass4660PhyloseqObjGlomOrderdf, select = c(Abundance, Order, Region, TissueType))
+
+# create three separate dataframes for each tissue type
+# Lesion tissue dataframe
+Eelgrass4660PhyloseqObjGlomOrderdfSubsetLesion <- Eelgrass4660PhyloseqObjGlomOrderdfSubset %>% filter(TissueType == "Lesion")
+
+# check that you correctly filtered dataset
+unique(Eelgrass4660PhyloseqObjGlomOrderdfSubsetLesion$TissueType)
+nrow(Eelgrass4660PhyloseqObjGlomOrderdfSubsetLesion)
+
+# GTLB dataframe
+Eelgrass4660PhyloseqObjGlomOrderdfSubsetGTLB <- Eelgrass4660PhyloseqObjGlomOrderdfSubset %>% filter(TissueType == "GTLB")
+
+# check that you correctly filtered dataset
+unique(Eelgrass4660PhyloseqObjGlomOrderdfSubsetGTLB$TissueType)
+nrow(Eelgrass4660PhyloseqObjGlomOrderdfSubsetGTLB)
+
+# non-LB dataframe
+Eelgrass4660PhyloseqObjGlomOrderdfSubsetnonLB <- Eelgrass4660PhyloseqObjGlomOrderdfSubset %>% filter(TissueType == "non-LB")
+
+# check that you correctly filtered dataset
+unique(Eelgrass4660PhyloseqObjGlomOrderdfSubsetnonLB$TissueType)
+nrow(Eelgrass4660PhyloseqObjGlomOrderdfSubsetnonLB)
+
+# calculate relative abundances of each Order per region on each tissue type dataframe
+# loop through list of unique region names to subset the df; group_by Order and sum abundances of each Order, calculate sum of counts for each region (N), calculate relative abundances of each Order, check that sum of relative abundances per region equal 100%, append dataframe to a list, bind dataframes within list with bind_rows function
+
+# obtain unique list of RegionNames
+region_unique <- unique(Eelgrass4660PhyloseqObjGlomOrderdfSubset$Region)
+
+# create list for lesion data
+region_table_lesion <- list()
+
+# for loop for lesion blade dataframe
+for(i in seq_along(region_unique)) {
+  X=subset(Eelgrass4660PhyloseqObjGlomOrderdfSubsetLesion, Region == region_unique[i])
+  tempLesion = X %>% group_by(Order) %>% summarise_each(funs(sum (Abundance)))
+  tempLesion$Region = region_unique[i]
+  tempLesion$TissueType = c("Lesion")
+  tempLesion$N =  sum(tempLesion$Abundance) 
+  tempLesion$RelAbund <- ( (tempLesion$Abundance / tempLesion$N) * 100 )
+  tempLesion$SumRelAbund <- sum(tempLesion$RelAbund) 
+  region_table_lesion[[i]] <- tempLesion
+  
+  print(tempLesion)
+}
+
+# bind items in region_table list with rbind/bind_rows
+region_table_lesion <- bind_rows(region_table_lesion)
+
+# create list for GTLB data
+region_table_GTLB <- list()
+
+# for loop for GTLB dataframe
+for(i in seq_along(region_unique)) {
+  X=subset(Eelgrass4660PhyloseqObjGlomOrderdfSubsetGTLB, Region == region_unique[i])
+  tempGTLB = X %>% group_by(Order) %>% summarise_each(funs(sum (Abundance)))
+  tempGTLB$Region = region_unique[i]
+  tempGTLB$TissueType = c("GTLB")
+  tempGTLB$N =  sum(tempGTLB$Abundance) 
+  tempGTLB$RelAbund <- ( (tempGTLB$Abundance / tempGTLB$N) * 100 )
+  tempGTLB$SumRelAbund <- sum(tempGTLB$RelAbund) 
+  region_table_GTLB[[i]] <- tempGTLB
+  
+  print(tempGTLB)
+}
+
+# bind items in region_table list with rbind/bind_rows
+region_table_GTLB <- bind_rows(region_table_GTLB)
+
+# create list for non-LB data
+region_table_nonLB <- list()
+
+# for loop for non-LB dataframe
+for(i in seq_along(region_unique)) {
+  X=subset(Eelgrass4660PhyloseqObjGlomOrderdfSubsetnonLB, Region == region_unique[i])
+  tempnonLB = X %>% group_by(Order) %>% summarise_each(funs(sum (Abundance)))
+  tempnonLB$Region = region_unique[i]
+  tempnonLB$TissueType = c("non-LB")
+  tempnonLB$N =  sum(tempnonLB$Abundance) 
+  tempnonLB$RelAbund <- ( (tempnonLB$Abundance / tempnonLB$N) * 100 )
+  tempnonLB$SumRelAbund <- sum(tempnonLB$RelAbund) 
+  region_table_nonLB[[i]] <- tempnonLB
+  
+  print(tempnonLB)
+}
+
+# bind items in region_table list with rbind/bind_rows
+region_table_nonLB <- bind_rows(region_table_nonLB)
+
+# bind each tissue type dataframe
+region_table_all <- bind_rows(region_table_lesion,region_table_GTLB,region_table_nonLB)
+
+# create column of top twenty most abundant orders across all regions
+
+#subset to Order and relative abundance column 
+region_table_subset <-  subset(region_table_all, select = c(Order, RelAbund))
+
+# group by Order and calculate mean relative abundances across all regions
+RegionalMeanRelAbundOrder <- region_table_subset %>%
+  group_by(Order) %>%
+  summarise_each(funs(mean (RelAbund)))
+
+# sort by decreasing Order mean relative abundance 
+RegionalMeanRelAbundOrder <- RegionalMeanRelAbundOrder[order(RegionalMeanRelAbundOrder$RelAbund, decreasing = TRUE), ]
+# subset by the first 20 rows (~ top twenty most abundant Orders)
+top_twenty <- RegionalMeanRelAbundOrder[1:21, ]
+# remove Order NA
+top_twenty <- top_twenty %>% filter(Order != "NA")
+
+# obtain list of top twenty order names
+ top_twenty_names <- top_twenty$Order
+
+# create new column of top twenty most abundant Orders in region_table dataframe
+region_table_all$Order20 <- NA
+
+# fill Order20 column with Order column names of 20 most abundant Orders using ifelse statement
+region_table_all$Order20 <- ifelse(region_table_all$Order %in% top_twenty_names, region_table_all$Order, NA)
+
+#order factor levels
+region_table_all$TissueType <- factor(region_table_all$TissueType, levels=c("non-LB", "GTLB", "Lesion"))
+
+# bar plot of top 20 most abundant Orders, with full metadata and facet grid 
+ggplot(region_table_all, aes(x = Region, y = RelAbund, fill = Order20)) + 
+  geom_bar(stat="identity") +
+  scale_fill_manual(values = col2) +
+  theme(legend.title = element_text(size=16), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 18)) +
+  theme(strip.text.x = element_text(size = 14)) +
+  facet_grid(~TissueType) +
+  ylab("Relative abundance %") +
+  xlab("Region") +
+  guides(fill=guide_legend("Order"))
+
+ggsave(file = "../../plots/Eelgrass_4660_barplot_top20_Order.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+```
+

@@ -1,0 +1,420 @@
+---
+title: "Regional microbial analyses on green tissue samples from lesioned and non-lesioned blades rarefied at 4660 sequences per sample"
+author: "DSB"
+output: pdf_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, include = TRUE, fig.show=TRUE) #global options
+```
+
+Package versions for phyloseq, vegan, ggplot2, plyr, data.table, tidyverse, wesanderson, ggpubr
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+library(vegan); packageVersion("vegan")
+library(ggplot2); packageVersion("ggplot2")
+library(plyr); packageVersion("plyr")
+library(data.table); packageVersion("data.table")
+library(tidyverse); packageVersion("tidyverse")
+library(wesanderson); packageVersion("wesanderson")
+library(ggpubr); packageVersion("ggpubr")
+gsub("[[:punct:][:space:]]", "-", Sys.time())
+```
+
+```{r read in data, filter by region, echo=FALSE}
+
+GreenOnly4660PhyloseqObj <- readRDS(file = "../../phyloseq_object/GreenOnly4660PhyloseqObj.rds")
+
+#order factor levels
+sample_data(GreenOnly4660PhyloseqObj)$RegionName <-factor(sample_data(GreenOnly4660PhyloseqObj)$RegionName, levels=c("Alaska", "British Columbia", "Washington", "Oregon", "Bodega", "San Diego"))
+
+# subset to Alaska samples
+GreenOnly4660PhyloseqObjAK <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(sample_data(GreenOnly4660PhyloseqObj)$RegionName == "Alaska")
+
+# remove ESVs with zero sum across AK samples
+GreenOnly4660PhyloseqObjAK = filter_taxa(GreenOnly4660PhyloseqObjAK, function(x) sum(x) > 0, TRUE)
+#GreenOnly4660PhyloseqObjAK # 35 samples 7439 ESVs
+
+# subset to British Columbia samples
+GreenOnly4660PhyloseqObjBC <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(sample_data(GreenOnly4660PhyloseqObj)$RegionName == "British Columbia")
+
+# remove ESVs with zero sum across BC samples
+GreenOnly4660PhyloseqObjBC = filter_taxa(GreenOnly4660PhyloseqObjBC, function(x) sum(x) > 0, TRUE)
+#GreenOnly4660PhyloseqObjBC # 57 samples 11086 ESVs
+
+# subset to Washington samples
+GreenOnly4660PhyloseqObjWA <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(sample_data(GreenOnly4660PhyloseqObj)$RegionName == "Washington")
+
+# remove ESVs with zero sum across WA samples
+GreenOnly4660PhyloseqObjWA = filter_taxa(GreenOnly4660PhyloseqObjWA, function(x) sum(x) > 0, TRUE)
+#GreenOnly4660PhyloseqObjWA # 38 samples 7499 ESVs
+
+# subset to Oregon samples
+GreenOnly4660PhyloseqObjOR <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(sample_data(GreenOnly4660PhyloseqObj)$RegionName == "Oregon")
+
+# remove ESVs with zero sum across OR samples
+GreenOnly4660PhyloseqObjOR = filter_taxa(GreenOnly4660PhyloseqObjOR, function(x) sum(x) > 0, TRUE)
+#GreenOnly4660PhyloseqObjOR # 24 samples 5981 ESVs
+
+# subset to Bodega samples
+GreenOnly4660PhyloseqObjBB <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(sample_data(GreenOnly4660PhyloseqObj)$RegionName == "Bodega")
+
+# remove ESVs with zero sum across BB samples
+GreenOnly4660PhyloseqObjBB = filter_taxa(GreenOnly4660PhyloseqObjBB, function(x) sum(x) > 0, TRUE)
+#GreenOnly4660PhyloseqObjBB # 54 samples 8657 ESVs
+
+# subset to San Diego samples
+GreenOnly4660PhyloseqObjSD <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(sample_data(GreenOnly4660PhyloseqObj)$RegionName == "San Diego")
+
+# remove ESVs with zero sum across SD samples
+GreenOnly4660PhyloseqObjSD = filter_taxa(GreenOnly4660PhyloseqObjSD, function(x) sum(x) > 0, TRUE)
+#GreenOnly4660PhyloseqObjSD # 40 samples by 7148 ESVs
+
+```
+\  
+\  
+\  
+\  
+\  
+\  
+\  
+\   
+
+Summary of number of samples, number of taxa, sample variables, taxa levels from phyloseq object
+Alaska: 35 samples after rarefaction, 7,439 ESVs
+\  
+\  
+```{r summarize, echo=FALSE}
+GreenOnly4660PhyloseqObjAK
+
+```
+\  
+\  
+Summary of number of samples, number of taxa, sample variables, taxa levels from phyloseq object
+British Columbia: 57 samples after rarefaction, 11,086 ESVs
+\  
+\  
+```{r summarize, echo=FALSE}
+GreenOnly4660PhyloseqObjBC
+
+```  
+\  
+\  
+Summary of number of samples, number of taxa, sample variables, taxa levels from phyloseq object
+Washington: 38 samples after rarefaction, 7,499 ESVs
+\  
+\  
+```{r summarize, echo=FALSE}
+GreenOnly4660PhyloseqObjWA
+
+```    
+\  
+\  
+Summary of number of samples, number of taxa, sample variables, taxa levels from phyloseq object
+Oregon: 24 samples after rarefaction, 5,981 ESVs
+\  
+\  
+```{r summarize, echo=FALSE}
+GreenOnly4660PhyloseqObjOR
+
+```   
+\  
+\ 
+Summary of number of samples, number of taxa, sample variables, taxa levels from phyloseq object
+Bodega: 54 samples after rarefaction, 8,657 ESVs
+\  
+\  
+```{r summarize, echo=FALSE}
+GreenOnly4660PhyloseqObjBB
+
+```
+\  
+\ 
+Summary of number of samples, number of taxa, sample variables, taxa levels from phyloseq object
+San Diego: 40 samples after rarefaction, 7,148 ESVs
+\  
+\  
+```{r summarize, echo=FALSE}
+GreenOnly4660PhyloseqObjSD
+
+```
+\  
+\ 
+\ 
+\ 
+Alaska PCoA ordination of microbial community composition from Bray Curtis disimilarities. Lesion prevalence and shoot density have largest effect sizes after meadow location. 
+```{r betadiv, warning=FALSE}
+#Bray Curtis
+GreenOnly4660DistanceBrayCurtisAK = distance(GreenOnly4660PhyloseqObjAK, method = "bray")
+
+#extract metadata
+Metadata.AK <- data.frame(sample_data(GreenOnly4660PhyloseqObjAK))
+
+#Adonis
+Green_only_4660_AK_Adonis <- adonis2(GreenOnly4660DistanceBrayCurtisAK ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + LocationName, by = "terms", data = Metadata.AK)
+Green_only_4660_AK_Adonis
+write.csv(Green_only_4660_AK_Adonis, file = "/../../out_files/GreenOnly4660/AK/Green_only_4660_AK_Adonis.csv")
+
+# calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660AKLesionStatus <- (betadisper(GreenOnly4660DistanceBrayCurtisAK, Metadata.AK$LesionStatus))
+# permtest on dispersions
+permutest(BetadispGreenOnly4660AKLesionStatus) # F = 7.45 p = 0.01
+BetadispGreenOnly4660AKLesionStatus # lesioned blade= 0.5295; non-lesioned blade = 0.4657
+capture.output(permutest(BetadispGreenOnly4660AKLesionStatus), file = "/../../out_files/GreenOnly4660/AK/Betadisp_green_only_4660_AK_lesion_status_permutest.txt")
+
+#PCoA ordination of distance matrix
+OrdinationGreenOnly4660PhyloseqObjAK = ordinate(GreenOnly4660PhyloseqObjAK, method = "PCoA", 
+                                                     distance = GreenOnly4660DistanceBrayCurtisAK)
+# vector of color palette
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# plot by prevalence per transect 
+PCoAGreenOnly4660PhyloseqObjAK <- plot_ordination(GreenOnly4660PhyloseqObjAK, OrdinationGreenOnly4660PhyloseqObjAK, color = "PrevalenceMean") +
+    geom_point(mapping = aes(shape = LesionStatus), size=4) +
+    labs(col= "Lesion prevalence per transect", shape="Lesion status") +
+    theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14)) +
+  scale_color_gradientn(colours = pal)
+
+PCoAGreenOnly4660PhyloseqObjAK
+
+ggsave(PCoAGreenOnly4660PhyloseqObjAK, file = "../../plots/PCoAGreenOnly4660PhyloseqObjAK.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+\  
+\  
+\  
+\  
+\  
+\  
+\  
+\ 
+
+\  
+\  
+\pagebreak
+
+British Columbia PCoA ordination of microbial community composition from Bray Curtis disimilarities. Blade area & tidal height have largest effect sizes after meadow location. 
+```{r betadiv, warning=FALSE}
+#Bray Curtis
+GreenOnly4660DistanceBrayCurtisBC = distance(GreenOnly4660PhyloseqObjBC, method = "bray")
+
+#extract metadata
+Metadata.BC <- data.frame(sample_data(GreenOnly4660PhyloseqObjBC))
+
+#Adonis
+Green_only_4660_BC_Adonis <- adonis2(GreenOnly4660DistanceBrayCurtisBC ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + LocationName, by = "terms", data = Metadata.BC)
+Green_only_4660_BC_Adonis
+write.csv(Green_only_4660_BC_Adonis, file = "/../../out_files/GreenOnly4660/BC/Green_only_4660_BC_Adonis.csv")
+
+#calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660BCLesionStatus <- (betadisper(GreenOnly4660DistanceBrayCurtisBC, Metadata.BC$LesionStatus))
+# permtest on dispersions
+permutest(BetadispGreenOnly4660BCLesionStatus) # F = 3.897 p = 0.063
+BetadispGreenOnly4660BCLesionStatus 
+capture.output(permutest(BetadispGreenOnly4660BCLesionStatus), file = "/../../out_files/GreenOnly4660/BC/Betadisp_green_only_4660_BC_lesion_status_permutest.txt")
+
+#PCoA ordination of distance matrix
+OrdinationGreenOnly4660PhyloseqObjBC = ordinate(GreenOnly4660PhyloseqObjBC, method = "PCoA", 
+                                                     distance = GreenOnly4660DistanceBrayCurtisBC)
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# plot by prevalence per transect
+PCoAGreenOnly4660PhyloseqObjBC <- plot_ordination(GreenOnly4660PhyloseqObjBC, OrdinationGreenOnly4660PhyloseqObjBC, color = "PrevalenceMean") +
+    geom_point(mapping = aes(shape = LesionStatus), size=4) +
+    labs(col= "Lesion prevalence per transect", shape="Lesion status") +
+    theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14)) +
+  scale_color_gradientn(colours = pal)
+
+PCoAGreenOnly4660PhyloseqObjBC
+
+ggsave(PCoAGreenOnly4660PhyloseqObjBC, file = "/../../plots/PCoAGreenOnly4660PhyloseqObjBC.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+Washington PCoA ordination of microbial community composition from Bray Curtis disimilarities. Blade area, lesion severity and lesion prevalence have largest effect sizes after meadow location. 
+```{r betadiv, warning=FALSE}
+#Bray Curtis
+GreenOnly4660DistanceBrayCurtisWA = distance(GreenOnly4660PhyloseqObjWA, method = "bray")
+
+#extract metadata
+Metadata.WA <- data.frame(sample_data(GreenOnly4660PhyloseqObjWA))
+
+#Adonis
+Green_only_4660_WA_Adonis <- adonis2(GreenOnly4660DistanceBrayCurtisWA ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + LocationName, by = "terms", data = Metadata.WA)
+Green_only_4660_WA_Adonis
+write.csv(Green_only_4660_WA_Adonis, file = "/../../out_files/GreenOnly4660/WA/Green_only_4660_WA_Adonis.csv")
+
+#calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660WALesionStatus <- (betadisper(GreenOnly4660DistanceBrayCurtisWA, Metadata.WA$LesionStatus))
+# permtest on dispersion
+permutest(BetadispGreenOnly4660WALesionStatus) # F = 0.0759 p = 0.765
+BetadispGreenOnly4660WALesionStatus 
+capture.output(permutest(BetadispGreenOnly4660WALesionStatus), file = "/../../out_files/GreenOnly4660/WA/Betadisp_green_only_4660_WA_lesion_status_permutest.txt")
+
+#PCoA ordination of distance matrix
+OrdinationGreenOnly4660PhyloseqObjWA = ordinate(GreenOnly4660PhyloseqObjWA, method = "PCoA", 
+                                                     distance = GreenOnly4660DistanceBrayCurtisWA)
+
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# plot by prevalence per transect
+PCoAGreenOnly4660PhyloseqObjWA <- plot_ordination(GreenOnly4660PhyloseqObjWA, OrdinationGreenOnly4660PhyloseqObjWA, color = "PrevalenceMean") +
+    geom_point(mapping = aes(shape = LesionStatus), size=4) +
+    labs(col= "Lesion prevalence per transect", shape="Lesion status") +
+    theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14)) +
+  scale_color_gradientn(colours = pal)
+   
+PCoAGreenOnly4660PhyloseqObjWA
+
+ggsave(PCoAGreenOnly4660PhyloseqObjWA, file = "/../../plots/PCoAGreenOnly4660PhyloseqObjWA.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+Oregon PCoA ordination of microbial community composition from Bray Curtis disimilarities. Blade area, shoot density, lesion status, longest blade length, & severity have largest effect sizes after meadow location. 
+```{r betadiv, warning=FALSE}
+#Bray Curtis
+GreenOnly4660DistanceBrayCurtisOR = distance(GreenOnly4660PhyloseqObjOR, method = "bray")
+
+#extract metadata
+Metadata.OR <- data.frame(sample_data(GreenOnly4660PhyloseqObjOR))
+
+#Adonis
+Green_only_4660_OR_Adonis <- adonis2(GreenOnly4660DistanceBrayCurtisOR ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + LocationName, by = "terms", data = Metadata.OR)
+Green_only_4660_OR_Adonis
+write.csv(Green_only_4660_OR_Adonis, file = "/../../out_files/GreenOnly4660/OR/Green_only_4660_OR_Adonis.csv")
+
+#calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660ORLesionStatus <- (betadisper(GreenOnly4660DistanceBrayCurtisOR, Metadata.OR$LesionStatus))
+#permtest on dispersion
+permutest(BetadispGreenOnly4660ORLesionStatus) # F = 0.014 p = 0.917
+BetadispGreenOnly4660ORLesionStatus 
+capture.output(permutest(BetadispGreenOnly4660ORLesionStatus), file = "/../../out_files/GreenOnly4660/OR/Betadisp_green_only_4660_OR_lesion_status_permutest.txt")
+
+#PCoA ordination of distance matrix
+OrdinationGreenOnly4660PhyloseqObjOR = ordinate(GreenOnly4660PhyloseqObjOR, method = "PCoA", 
+                                                     distance = GreenOnly4660DistanceBrayCurtisOR)
+
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# plot by prevalence per transect 
+PCoAGreenOnly4660PhyloseqObjOR <- plot_ordination(GreenOnly4660PhyloseqObjOR, OrdinationGreenOnly4660PhyloseqObjOR, color = "PrevalenceMean") +
+    geom_point(mapping = aes(shape = LesionStatus), size=4) +
+    labs(col= "Lesion prevalence per transect", shape="Lesion status") +
+    theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14)) +
+  scale_color_gradientn(colours = pal)
+
+PCoAGreenOnly4660PhyloseqObjOR
+
+ggsave(PCoAGreenOnly4660PhyloseqObjOR, file = "/../../plots/PCoAGreenOnly4660PhyloseqObjOR.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+Bodega PCoA ordination of microbial community composition from Bray Curtis disimilarities. Prevalence, blade area, & shoot density have largest effect sizes after meadow location. 
+```{r betadiv, warning=FALSE}
+#Bray Curtis on non-transformed data; somewhat u-shaped ordination with PCoA but square root and log transformations did not improve ordination
+GreenOnly4660DistanceBrayCurtisBB = distance(GreenOnly4660PhyloseqObjBB, method = "bray")
+
+# variance stabilize with log transformation; did not improve ordination
+# logtGreenOnly4660PhyloseqObjBB  = transform_sample_counts(GreenOnly4660PhyloseqObjBB, function(x) log(1 + x) )
+# sqrt transform; did not improve
+# sqrtGreenOnly4660PhyloseqObjBB  = transform_sample_counts(GreenOnly4660PhyloseqObjBB, function(x) sqrt(x) )
+
+#extract metadata
+Metadata.BB <- data.frame(sample_data(GreenOnly4660PhyloseqObjBB))
+
+#Adonis
+Green_only_4660_BB_Adonis <- adonis2(GreenOnly4660DistanceBrayCurtisBB ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + LocationName, by = "terms", data = Metadata.BB)
+Green_only_4660_BB_Adonis
+write.csv(Green_only_4660_BB_Adonis, file = "/../../out_files/GreenOnly4660/BB/Green_only_4660_BB_Adonis.csv")
+
+#calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660BBLesionStatus <- (betadisper(GreenOnly4660DistanceBrayCurtisBB, Metadata.BB$LesionStatus))
+# permtest on dispersion
+permutest(BetadispGreenOnly4660BBLesionStatus) # F = 0.0494 p = 0.834
+BetadispGreenOnly4660BBLesionStatus 
+capture.output(permutest(BetadispGreenOnly4660BBLesionStatus), file = "/../../out_files/GreenOnly4660/BB/Betadisp_green_only_4660_BB_lesion_status_permutest.txt")
+
+#PCoA ordination of distance matrix
+OrdinationGreenOnly4660PhyloseqObjBB = ordinate(GreenOnly4660PhyloseqObjBB, method = "PCoA", 
+                                                     distance = GreenOnly4660DistanceBrayCurtisBB)
+
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# plot by prevalence per transect
+PCoAGreenOnly4660PhyloseqObjBB <- plot_ordination(GreenOnly4660PhyloseqObjBB, OrdinationGreenOnly4660PhyloseqObjBB, color = "PrevalenceMean") +
+    geom_point(mapping = aes(shape = LesionStatus), size=4) +
+    labs(col= "Lesion prevalence per transect", shape="Lesion status") +
+    theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14)) +
+  scale_color_gradientn(colours = pal)
+
+PCoAGreenOnly4660PhyloseqObjBB
+
+ggsave(PCoAGreenOnly4660PhyloseqObjBB, file = "/../../plots/PCoAGreenOnly4660PhyloseqObjBB.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+San Diego PCoA ordination of microbial community composition from Bray Curtis disimilarities. Lesion prevalence, sheath length, & lesion severity have largest effect sizes after meadow location. 
+```{r betadiv, warning=FALSE}
+#Bray Curtis
+GreenOnly4660DistanceBrayCurtisSD = distance(GreenOnly4660PhyloseqObjSD, method = "bray")
+
+#extract metadata
+Metadata.SD <- data.frame(sample_data(GreenOnly4660PhyloseqObjSD))
+
+#Adonis
+Green_only_4660_SD_Adonis <- adonis2(GreenOnly4660DistanceBrayCurtisSD ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + LocationName, by = "terms", data = Metadata.SD)
+Green_only_4660_SD_Adonis
+write.csv(Green_only_4660_SD_Adonis, file = "/../../out_files/GreenOnly4660/SD/Green_only_4660_SD_Adonis.csv")
+
+#calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660SDLesionStatus <- (betadisper(GreenOnly4660DistanceBrayCurtisSD, Metadata.SD$LesionStatus))
+# permtest on dispersion
+permutest(BetadispGreenOnly4660SDLesionStatus) # F = 0.3622 p = 0.551
+BetadispGreenOnly4660SDLesionStatus 
+capture.output(BetadispGreenOnly4660SDLesionStatus, file = "/../../out_files/GreenOnly4660/SD/Betadisp_green_only_4660_SD_lesion_status.txt")
+capture.output(permutest(BetadispGreenOnly4660SDLesionStatus), file = "/../../out_files/GreenOnly4660/SD/Betadisp_green_only_4660_SD_lesion_status_permutest.txt")
+
+#PCoA ordination of distance matrix
+OrdinationGreenOnly4660PhyloseqObjSD = ordinate(GreenOnly4660PhyloseqObjSD, method = "PCoA", 
+                                                     distance = GreenOnly4660DistanceBrayCurtisSD)
+
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+
+# plot by lesion prevalence per transect 
+PCoAGreenOnly4660PhyloseqObjSD <- plot_ordination(GreenOnly4660PhyloseqObjSD, OrdinationGreenOnly4660PhyloseqObjSD, color = "PrevalenceMean") +
+    geom_point(mapping = aes(shape = LesionStatus), size=4) +
+    labs(col= "Lesion prevalence per transect", shape="Lesion status") +
+    theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14)) +
+  scale_color_gradientn(colours = pal)
+
+PCoAGreenOnly4660PhyloseqObjSD
+
+ggsave(PCoAGreenOnly4660PhyloseqObjSD, file = "/../../plots/PCoAGreenOnly4660PhyloseqObjSD.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+# Extract the legend; returns a gtable to use in ggarange below
+leg <- get_legend(PCoAGreenOnly4660PhyloseqObjSD)
+
+```
+
+Arrange PCoA of Bray Curtis dissimilarities for each region into one figure.
+
+```{r regional PCoA, warning=FALSE}
+PCoA_Regional_Prevalence <- ggarrange(PCoAGreenOnly4660PhyloseqObjAK, PCoAGreenOnly4660PhyloseqObjBC,PCoAGreenOnly4660PhyloseqObjWA, PCoAGreenOnly4660PhyloseqObjOR, PCoAGreenOnly4660PhyloseqObjBB, PCoAGreenOnly4660PhyloseqObjSD,labels = c("A", "B", "C", "D", "E", "F"), ncol = 2, nrow = 3, align = "hv", heights = c(1,1), legend.grob = leg, legend = "right")
+PCoA_Regional_Prevalence
+ggsave(PCoA_Regional_Prevalence, file = "../../plots/PCoAGreenOnly4660PrevalenceRegionWrap.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+

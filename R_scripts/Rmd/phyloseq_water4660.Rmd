@@ -1,0 +1,452 @@
+---
+title: "Microbial analyses on water samples rarefied to 4660 sequences"
+author: "DSB"
+output: github_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, include = TRUE, fig.show=TRUE) #global options
+```
+
+Package versions for phyloseq, vegan, ggplot2, plyr, data.table, tidyverse, nlme, ggpubr, ggsci, scales
+
+```{r, echo=FALSE, message=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+library(vegan); packageVersion("vegan")
+library(ggplot2); packageVersion("ggplot2")
+library(plyr); packageVersion("plyr")
+library(data.table); packageVersion("data.table")
+library(tidyverse); packageVersion("tidyverse")
+library(nlme); packageVersion("nlme")
+library(ggpubr); packageVersion("ggpubr")
+library(ggsci); packageVersion("ggsci")
+library(scales); packageVersion("scales")
+
+gsub("[[:punct:][:space:]]", "-", Sys.time())
+```
+
+```{r read in data, results=FALSE}
+Water4660PhyloseqObj <- readRDS(file = "../../phyloseq_object/Water4660PhyloseqObj.rds")
+
+# order factor levels
+sample_data(Water4660PhyloseqObj)$RegionName <- factor(sample_data(Water4660PhyloseqObj)$RegionName, levels=c("Alaska", "British Columbia", "Washington", "Oregon", "Bodega", "San Diego"))
+
+# order factor levels
+sample_data(Water4660PhyloseqObj)$Region <- factor(sample_data(Water4660PhyloseqObj)$Region, levels=c("AK", "BC", "WA", "OR", "BB", "SD"))
+
+# print phyloseq summary
+Water4660PhyloseqObj #92 samples includes extra samples that are not part of the wasting disease project
+
+#remove Drake's Estero samples
+Water4660PhyloseqObj <- prune_samples(sample_names(Water4660PhyloseqObj) != "Sample36W", Water4660PhyloseqObj)
+Water4660PhyloseqObj <- prune_samples(sample_names(Water4660PhyloseqObj) != "Sample61W", Water4660PhyloseqObj)
+Water4660PhyloseqObj <- prune_samples(sample_names(Water4660PhyloseqObj) != "Sample84W", Water4660PhyloseqObj)
+#remove Sacramento Landing samples
+Water4660PhyloseqObj <- prune_samples(sample_names(Water4660PhyloseqObj) != "Sample52W", Water4660PhyloseqObj)
+Water4660PhyloseqObj <- prune_samples(sample_names(Water4660PhyloseqObj) != "Sample57W", Water4660PhyloseqObj)
+Water4660PhyloseqObj <- prune_samples(sample_names(Water4660PhyloseqObj) != "Sample73W", Water4660PhyloseqObj)
+
+```
+
+Summary of phyloseq object, number of samples, number of taxa, sample variables, taxa levels from water samples after removing Drake's Estero and Sacramento Landing samples (sites that are not part of the wastin disease study). There are 86 samples and 15,418 exact sequence variants. 
+
+```{r summarize}
+Water4660PhyloseqObj
+
+```
+
+Betadiversity analyses and PCoA plots on Bray Curtis dissimilarity after removing samples from sites that lack SST records (reduces sample size to 71). 
+
+```{r betadiv, warning=FALSE}
+
+# extract metadata from phyloseq object into a df
+Metadata <- data.frame(sample_data(Water4660PhyloseqObj))
+
+# remove samples with missing metadata of interest (e.g. satellite temps via MUR & GHRSST)
+Water4660PhyloseqObjSatelliteTempNARemoved <- Water4660PhyloseqObj %>%
+  subset_samples(!is.na (SST))
+
+# print phyloseq summary
+Water4660PhyloseqObjSatelliteTempNARemoved # 71 samples
+
+# extract metadata phyloseq obj following removal of NA for SST data
+Metadata.2 <- data.frame(sample_data(Water4660PhyloseqObjSatelliteTempNARemoved))
+
+# Bray Curtis dissimilarity
+Water4660PhyloseqObjSatelliteTempNARemovedDistanceBrayCurtis = distance(Water4660PhyloseqObjSatelliteTempNARemoved, method = "bray")
+
+#ordination PCoA
+OrdinationWater4660DistanceBrayCurtisTempNARemoved = ordinate(Water4660PhyloseqObjSatelliteTempNARemoved, method = "PCoA", 
+distance = Water4660PhyloseqObjSatelliteTempNARemovedDistanceBrayCurtis)
+
+# adonis on Bray Curtis dissimilarity with meadow location nested within region
+BrayCurtisWater4660Adonis <- adonis2(Water4660PhyloseqObjSatelliteTempNARemovedDistanceBrayCurtis ~ PrevalenceMean + SeverityMean + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + SST + thirty_day_max + thirty_day_min + Region/LocationName, by = "terms", data = Metadata)
+
+BrayCurtisWater4660Adonis
+write.csv(BrayCurtisWater4660Adonis, "../../out_files/BrayCurtisWater4660Adonis2LocationNameNestedRegion.csv")
+
+# obtain color palette for plot
+mypalNEJM <- pal_nejm("default")(8)
+# plot colors 
+show_col(mypalNEJM)
+# assign hexidecimal color codes to variable
+mypalNEJM =  c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF", "#7876B1FF", "#6F99ADFF") 
+
+#plot by SST
+Water_4660_Bray_Curtis_PCoA_Region_SST_NA_removed <- plot_ordination(Water4660PhyloseqObjSatelliteTempNARemoved,OrdinationWater4660DistanceBrayCurtisTempNARemoved, color = "RegionName") + 
+  geom_point(mapping = aes(size = SST)) +
+  scale_colour_manual(values = mypalNEJM) +
+  theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14) ) +
+  labs(color = "Region", size = "SST ºC") +
+  guides(color = guide_legend(override.aes = list(size=6)))
+
+Water_4660_Bray_Curtis_PCoA_Region_SST_NA_removed
+
+ggsave(Water_4660_Bray_Curtis_PCoA_Region_SST_NA_removed, file = "../../plots/Water_4660_Bray_Curtis_PCoA_Region_SST_NA_removed.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+# use ggarange to put PCoA of eelgrass green 4660 samples and water 4660 samples into one figure
+# Green_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max comes from phyloseq_green4660.Rmd code, load object into environment
+
+# ggarange eelgrass and water PCoAs
+PCoA_Figure <- ggarrange(Green_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max, Water_4660_Bray_Curtis_PCoA_Region_SST_NA_removed,
+                 labels = c("A", "B"), ncol = 1, nrow = 2, align = "hv", heights = c(1.4,1))
+
+PCoA_Figure
+
+ggsave(PCoA_Figure, file = "../../plots/Wrap_PCoA_Green_only_4660_Water_4660_Bray_Curtis_SST.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+``` 
+
+Test for dispersion differences in seawater microbiome composition with region.
+
+```{r betadisp & visualize, warning=FALSE, message=FALSE}
+#calculate multivariate dispersions
+BetadispWater4660Region <- (betadisper(Water4660PhyloseqObjSatelliteTempNARemovedDistanceBrayCurtis, Metadata.2$RegionName))
+# permtest of dispersions
+permutest(BetadispWater4660Region, pairwise = TRUE)
+BetadispWater4660Region
+capture.output(BetadispWater4660Region, file = "../../out_files/BetadispWater4660Region.txt")
+capture.output(permutest(BetadispWater4660Region, pairwise = TRUE), file = "../../out_files/BetadispWater4660RegionPermTest.txt")
+
+```
+
+Alphadiversity analyses on seawater microbial communties after removing samples from sites that lack SST records (reduces sample size to 71)
+
+```{r alphadiv}
+#calculate alpha diversity metrics, richness & Shannon diversity
+AlphaWater4660 <- estimate_richness(Water4660PhyloseqObj, measures = c("Observed", "Shannon"))
+
+# plot histograms
+histogram(AlphaWater4660$Observed)
+histogram(AlphaWater4660$Shannon)
+
+#make SampleID as factor
+AlphaWater4660$SampleID <- rownames(AlphaWater4660) %>% as.factor()
+
+#extract metadata from phyloseq object into a df, make SampleID as factor
+metadata <- data.frame(sample_data(Water4660PhyloseqObj))
+metadata$SampleID <- rownames(metadata) %>% as.factor()
+
+# left join metadata with Alpha diversity by SampleID
+MetadataAlphaDivWater <- metadata %>% 
+  unclass() %>% 
+  data.frame() %>% 
+  left_join(AlphaWater4660, by = "SampleID")
+
+# remove samples without SST data
+MetadataAlphaDivWaterSSTNARemoved <- MetadataAlphaDivWater %>% 
+  filter(SST != "NA")
+
+# mixed effect model on richness (observed ESVs), meadow location as a random effect
+m1 <-  lme(Observed ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "REML", data = MetadataAlphaDivWaterSSTNARemoved)
+
+# summaries and anova on model
+m1
+anova(m1)
+summary(m1)
+
+# test for heterogeneity of variance  
+E2 <- resid(m1, type = "normalized")
+F2 <- fitted(m1)
+op <- par(mfrow = c(2,2), mar = c(4, 4, 3, 2))
+MyYlab <- "Residuals"
+plot(x = F2, y = E2, xlab = "Fitted values", ylab = MyYlab) #pattern of variance 
+
+# plot residuals by explanatory factors
+boxplot(E2 ~ SeverityMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "Lesion severity", ylab = MyYlab) 
+boxplot(E2 ~ PrevalenceMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "Lesion prevalence", ylab = MyYlab)
+boxplot(E2 ~ DensityShootsMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "Shoot density", ylab = MyYlab)
+boxplot(E2 ~ SheathLengthMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "Sheath length Mean", ylab = MyYlab)
+boxplot(E2 ~ RegionName, data = MetadataAlphaDivWaterSSTNARemoved, main = "Region", ylab = MyYlab) 
+boxplot(E2 ~ SST, data = MetadataAlphaDivWaterSSTNARemoved, main = "SST", ylab = MyYlab) 
+
+# model the variance 
+# VarExp can take the value of 0
+vf <- varComb(varExp(form=~SeverityMean), varExp(form=~SST))
+
+# use varComb varExp for SeverityMean and SST in mixed effects model
+# check residuals versus fitted values and explanatory variables above
+m1 <-  lme(Observed ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "REML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+
+# model summaries and anova
+m1
+anova(m1)
+summary(m1)
+
+#sequential drop of factors and compare model AIC scores with anova on ML
+m1.1 <-  lme(Observed ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "ML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+anova(m1)
+
+# drop SST variable and compare to m1.1 full model
+m2 <-  lme(Observed ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName,
+random = ~1 | LocationName, method = "ML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+
+# compare models
+anova(m1.1,m2) # lower AIC but not significantly different
+anova(m2)
+
+# keep m1 full model with variance structure modelled with REML method
+m1 <-  lme(Observed ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "REML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+
+# model summaries and anova
+m1
+anova(m1)
+summary(m1)
+
+# correlation test of observed sequence variant richness with severity mean and sheath lenth mean
+with(MetadataAlphaDivWaterSSTNARemoved, cor.test(SeverityMean, Observed)) # - 0.32 p = 0.006
+with(MetadataAlphaDivWaterSSTNARemoved, cor.test(SheathLengthMean, Observed)) # 0.72 p < 0.001
+
+# save anova of m1 model as data frame 
+m1observed_anova <- anova(m1)
+m1observed_anova
+Alpha_div_observed_water_4660_lme_LocationName_random_effect <- as.data.frame(m1observed_anova)
+
+write_csv(Alpha_div_observed_water_4660_lme_LocationName_random_effect, "../../out_files/Alpha_div_observed_water_4660_lme_LocationName_random_effect.csv")
+
+# shannon mixed effects model
+m1shannon <-  lme(Shannon ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "REML", data = MetadataAlphaDivWaterSSTNARemoved)
+
+# model summary and anova
+m1shannon
+anova(m1shannon)
+summary(m1shannon)
+
+#test for heterogeneity of variance  
+E2 <- resid(m1shannon, type = "normalized")
+F2 <- fitted(m1shannon)
+op <- par(mfrow = c(2,2), mar = c(4, 4, 3, 2))
+MyYlab <- "Residuals"
+plot(x = F2, y = E2, xlab = "Fitted values", ylab = MyYlab) #pattern of variance 
+
+boxplot(E2 ~ SeverityMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "SeverityMean", ylab = MyYlab) 
+boxplot(E2 ~ PrevalenceMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "PrevalenceMean", ylab = MyYlab) 
+boxplot(E2 ~ DensityShootsMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "Shoot density", ylab = MyYlab)
+boxplot(E2 ~ SheathLengthMean, data = MetadataAlphaDivWaterSSTNARemoved, main = "Sheath Length Mean", ylab = MyYlab)
+boxplot(E2 ~ RegionName, data = MetadataAlphaDivWaterSSTNARemoved, main = "Region", ylab = MyYlab)
+boxplot(E2 ~ SST, data = MetadataAlphaDivWaterSSTNARemoved, main = "SST", ylab = MyYlab) 
+
+# use varComb varExp for SeverityMean and SST in mixed effects model
+# check residuals versus fitted values and explanatory variables above
+vf <- varComb(varExp(form=~SeverityMean), varExp(form=~SST)) 
+
+#shannon mixed effects model with variance structure
+m1shannon <-  lme(Shannon ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "REML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+
+# model summary and anova
+m1shannon
+anova(m1shannon)
+summary(m1shannon)
+
+#sequential drop of factors to compare AIC and anova of ML method; prevalance has lowest F value
+m1shannon <-   lme(Shannon ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "ML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+anova(m1shannon)
+
+# drop factor with lowest F value, prevalence mean
+m1shannon.1 <-   lme(Shannon ~ SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "ML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+# compare models
+anova(m1shannon, m1shannon.1) # NSD
+
+# best model is with all factors and weighted variance structure exponential for SeverityMean and SST
+m1shannon <-  lme(Shannon ~ PrevalenceMean + SeverityMean + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = ~1 | LocationName, method = "REML", data = MetadataAlphaDivWaterSSTNARemoved, weights = vf)
+
+# model summary and anova
+m1shannon
+anova(m1shannon)
+summary(m1shannon)
+
+# correlation test of sequence variant shannon diversity with severity mean and sheath lenth mean
+with(MetadataAlphaDivWaterSSTNARemoved, cor.test(SeverityMean, Shannon))  # -0.24 p = 0.042
+with(MetadataAlphaDivWaterSSTNARemoved, cor.test(SheathLengthMean, Shannon)) # 0.67 p < 0.001
+
+# as dataframe
+m1shannon_anova <- anova(m1shannon)
+Alpha_div_shannon_diversity_water_4660_lme_LocationName_random_effect <- as.data.frame(m1shannon_anova)
+
+write_csv(m1shannon_anova, file = "../../out_files/Alpha_div_shannon_water_4660_LME_LocationName_random_effect.csv")
+
+# assign hexidecimal color codes to variable to match beta diversity colors
+mypalNEJM =  c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF", "#7876B1FF", "#6F99ADFF") 
+
+# plot by richness SeverityMean 
+B <- 
+  ggplot(MetadataAlphaDivWaterSSTNARemoved, aes(x = SeverityMean, y = Observed, 
+                                                          color = RegionName)) + 
+  geom_jitter(size = 5, width = 0.1) +
+  ylab("Richness") +
+  xlab("Lesion severity per transect") + 
+  theme(text = element_text(size=16)) +
+  scale_colour_manual(values = mypalNEJM, name="Region") 
+
+# plot Shannon diversity by SeverityMean
+D <- 
+  ggplot(MetadataAlphaDivWaterSSTNARemoved, aes(x = SeverityMean, y = Shannon, 
+                                                          color = RegionName)) + 
+  geom_jitter(size = 5, width = 0.1) +
+  ylab("Shannon diversity") +
+  xlab("Lesion severity per transect") + 
+  ylim(4,6) +
+  theme(text = element_text(size=16)) +
+  scale_colour_manual(values = mypalNEJM, name="Region") 
+
+# plot richness by SheathLengthMean 
+A <- ggplot(MetadataAlphaDivWaterSSTNARemoved, aes(x = SheathLengthMean, y = Observed, 
+                                                          color=RegionName)) + 
+  geom_jitter(size = 5, width = 0.1) +
+  ylab("Richness") +
+  xlab("Sheath length per transect") + 
+  theme(text = element_text(size=16)) +
+  scale_colour_manual(values = mypalNEJM, name="Region") 
+
+# plot Shannon diversity by SheathLengthMean 
+C <- ggplot(MetadataAlphaDivWaterSSTNARemoved, aes(x = SheathLengthMean, y = Shannon, 
+                                                          color = RegionName)) + 
+  geom_jitter(size = 5, width = 0.1) +
+  ylab("Shannon diversity") +
+  xlab("Sheath length per transect") + 
+  ylim(4,6) +
+  theme(text = element_text(size=16)) +
+  scale_colour_manual(values = mypalNEJM, name="Region") 
+
+# Extract the legend; returns a gtable to use in ggarange below
+leg <- get_legend(C)
+
+# use ggarange to make figure of four alpha diversity plots above (A-D)
+Fig <- ggarrange(A, B, C, D, 
+    labels = c("A", "B", "C", "D"), ncol = 2, nrow = 2, align = "hv", heights = c(1,1), legend.grob = leg, legend = "right")
+
+Fig
+ggsave(file = "../../plots/Water_4660_alpha_diversity_SheathLengthMean_SeverityMean.png", dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+Bar plots of the top twenty most abundant orders of bacteria associated with water.
+
+``` {r barplot, warning=FALSE}
+
+#merge ESVs that have the same classification at taxonomic rank order
+Water4660PhyloseqObjGlomOrder = tax_glom(Water4660PhyloseqObj, taxrank = "Order", NArm = FALSE)
+# summary of phyloseq object
+Water4660PhyloseqObjGlomOrder
+
+# color for plots
+col3 = c("#7f3b08",
+"#b35806",
+"#e08214",
+"#fdb863",
+"#fee0b6",
+"#e6f5d0",
+"#b8e186",
+"#7fbc41",
+"#4d9221",
+"#276419",
+"#d1e5f0",
+"#92c5de",
+"#4393c3",
+"#2166ac",
+"#053061",
+"#d8daeb", #purple
+"#b2abd2", #purple
+"#8073ac", #purple
+"#542788", #purple
+"#2d004b") #purple
+
+# psmelt to melt wide to long format taxonomy table and combine with metadata
+Water4660PhyloseqObjGlomOrderdf = psmelt(Water4660PhyloseqObjGlomOrder)
+
+# subset dataframe by columns of interest
+Water4660PhyloseqObjGlomOrderdf <- subset(Water4660PhyloseqObjGlomOrderdf, select = c(Abundance, Order, Region))
+
+# calculate relative abundances of each Order per region
+# loop through list of unique region names to subset the df; group_by Order and sum abundances of each Order, calculate sum of counts for each region (N), calculate relative abundances of each Order, check that sum of relative abundances per region equal 100% 
+
+# obtain unique list of RegionNames
+region_unique <- unique(Water4660PhyloseqObjGlomOrderdf$Region)
+
+# create list
+region_table <- list()
+
+for(i in seq_along(region_unique)) {
+  X=subset(Water4660PhyloseqObjGlomOrderdf, Region == region_unique[i])
+  temp = X %>% group_by(Order) %>% summarise_each(funs(sum (Abundance)))
+  temp$Region = region_unique[i]
+  temp$N =  sum(temp$Abundance) 
+  temp$RelAbund <- ( (temp$Abundance / temp$N) * 100 )
+  temp$SumRelAbund <- sum(temp$RelAbund) 
+  region_table[[i]] <- temp
+  
+  print(temp)
+}
+
+# bind items in region_table list with rbind/bind_rows
+region_table <- bind_rows(region_table)
+
+# create column of top twenty most abundant orders across all regions
+
+#subset to Order and relative abundance column 
+region_table_subset <-  subset(region_table, select = c(Order, RelAbund))
+
+# group by Order and calculate mean relative abundances across all regions
+RegionalMeanRelAbundOrder <- region_table_subset %>%
+  group_by(Order) %>%
+  summarise_each(funs(mean (RelAbund)))
+
+# sort by decreasing Order mean relative abundance 
+RegionalMeanRelAbundOrder <- RegionalMeanRelAbundOrder[order(RegionalMeanRelAbundOrder$RelAbund, decreasing = TRUE), ]
+# subset by the first 20 rows (~ top twenty most abundant Orders)
+top_twenty <- RegionalMeanRelAbundOrder[1:20, ]
+
+# obtain list of top twenty order names
+ top_twenty_names <- top_twenty$Order
+
+# create new column of top twenty most abundant Orders in region_table dataframe
+region_table$Order20 <- NA
+
+# fill Order20 column with Order column names using ifelse statement
+region_table$Order20 <- ifelse(region_table$Order %in% top_twenty_names, region_table$Order, NA)
+
+# bar plot of 20 most abundant Orders
+ggplot(region_table, aes(x = Region, y = RelAbund, fill = Order20)) + 
+  geom_bar(stat="identity") +
+  scale_fill_manual(values = col3) +
+  theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=16), axis.title = element_text(size = 16)) +
+  ylab("Relative abundance %") +
+  xlab("Region") +
+  guides(fill=guide_legend("Order"))
+
+ ggsave(file = "../../plots/Water_only_4660_barplot_top20_Orders.png", 
+        dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+

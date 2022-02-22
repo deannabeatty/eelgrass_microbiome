@@ -1,0 +1,244 @@
+title: "DESeq2 analysis on green tissue from lesioned and non-lesioned blades"
+author: "DSB"
+output: pdf_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, include = TRUE, fig.show=TRUE) #global options
+```
+
+
+Package versions for phyloseq, DESeq2, ggplot2, plyr, tidyverse, knitr
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+library(DESeq2); packageVersion("DESeq2")
+library(ggplot2); packageVersion("ggplot2")
+library(plyr); packageVersion("plyr")
+library(tidyverse); packageVersion("tidyverse")
+library(knitr); packageVersion(("knitr"))
+gsub("[[:punct:][:space:]]", "-", Sys.time())
+```
+
+```{r read in data}
+# read in non-rarefied phyloseq object for DESeq2
+DeblurTablePhyloseqObj <- readRDS(file = "../../phyloseq_object/DeblurTablePhyloseqObj.rds")
+
+# order factor levels
+sample_data(DeblurTablePhyloseqObj)$RegionName <-factor(sample_data(DeblurTablePhyloseqObj)$RegionName, levels=c("Alaska", "BritishColumbia", "Washington", "Oregon", "Bodega", "SanDiego"))
+
+# order factor levels
+sample_data(DeblurTablePhyloseqObj)$Region <-factor(sample_data(DeblurTablePhyloseqObj)$Region, levels=c("AK", "BC", "WA", "OR", "BB", "SD"))
+
+# read in rarefied phyloseq object for plots; allows comparison of relative abundances across plots in manuscript
+GreenOnly4660PhyloseqObj <- readRDS(file = "../../phyloseq_object/GreenOnly4660PhyloseqObj.rds")
+
+# order factor levels
+sample_data(GreenOnly4660PhyloseqObj)$RegionName <-factor(sample_data(GreenOnly4660PhyloseqObj)$RegionName, levels=c("Alaska", "British Columbia", "Washington", "Oregon", "Bodega", "San Diego"))
+
+# order factor levels
+sample_data(GreenOnly4660PhyloseqObj)$Region <-factor(sample_data(GreenOnly4660PhyloseqObj)$Region, levels=c("AK", "BC", "WA", "OR", "BB", "SD"))
+
+```
+
+Subset and summary of DESeq2 object
+```{r filter, order, glom}
+# print phyloseq object information
+DeblurTablePhyloseqObj
+
+#remove samples with fewer than 1000 sequences
+DeblurTablePhyloseqObj <- prune_samples(sample_sums(DeblurTablePhyloseqObj)>=1000, DeblurTablePhyloseqObj)
+
+#filter green tissue samples for analyses
+DeblurTablePhyloseqObjGreenTissue <-  subset_samples(DeblurTablePhyloseqObj, TissueType=="green tissue non-lesioned blade" | TissueType=="green tissue lesioned blade")
+
+# print phyloseq object information
+DeblurTablePhyloseqObjGreenTissue
+
+#merge ESVs that have the same classification at taxonomic rank family; creates a new phyloseq object, keep NAs to match qiime2 glom
+DeblurTablePhyloseqObjGreenTissueGlomFamilyNA = tax_glom(DeblurTablePhyloseqObjGreenTissue, taxrank = "Family", NArm = FALSE)
+
+# print phyloseq object information
+DeblurTablePhyloseqObjGreenTissueGlomFamilyNA # 380 family taxa and NA for family but higher classification available, 346 samples
+
+#merge ESVs that have the same classification at taxonomic rank family; creates a new phyloseq object, keep NAs to match qiime2 glom; this is for plots from rarefied table for consistency across plots in manuscript
+GreenOnly4660PhyloseqObjGlomFamilyNA = tax_glom(GreenOnly4660PhyloseqObj, taxrank = "Family", NArm = FALSE)
+
+# print phyloseq object information
+GreenOnly4660PhyloseqObjGlomFamilyNA # family taxa 354 & NA, 248 samples
+```
+
+Convert to DESeq2 object and build model
+```{r convert to DESeq2}
+# convert to DESeq2 and build model
+DeblurTableGreenTissueDS2Obj <- phyloseq_to_deseq2(DeblurTablePhyloseqObjGreenTissue, ~LesionStatus)
+
+# convert to DESeq2 and build model on glom family phyloseq object
+DeblurTableGreenTissueGlomFamilyNADS2Obj <- phyloseq_to_deseq2(DeblurTablePhyloseqObjGreenTissueGlomFamilyNA, ~LesionStatus)
+
+```
+
+Negative binomial model on lesion status comparing green tissue from lesioned versus non-lesioned blades. Zero ESVs are differentially abundant after corrections for multiple comparisons. 
+
+```{r Neg Binomial Model ESVs}
+# run model with Wald test fit parametric and sfType poscounts
+# poscounts works well for metagenomic data with genes/ESVs with 0 counts across multiple samples
+Mod1Green <- DESeq(DeblurTableGreenTissueDS2Obj, test="Wald", fitType="parametric", sfType = "poscounts")
+
+# model comparisons
+resultsNames(Mod1Green) # Green_non_lesion_blade_vs_Adjacent_green_tissue; Green_non_lesion_blade is numerator for logfoldchange
+# save model output 
+OutputMod1Green = results(Mod1Green)
+# order results by adjusted p values
+OutputMod1Green = OutputMod1Green[order(OutputMod1Green$padj, na.last = NA), ]
+# set alpha cut off at 0.1
+alpha = 0.1
+# save only those with < alpha as sigtabGreen
+sigtabGreen = OutputMod1Green[(OutputMod1Green$padj < alpha), ]
+# column bind sigtabGreen with taxonomic data using rownames as identifiers
+sigtabGreen = cbind(as(sigtabGreen, "data.frame"), 
+               as(tax_table(DeblurTablePhyloseqObjGreenTissue)[rownames(sigtabGreen), ], "matrix"))
+
+knitr::kable(sigtab)
+
+```
+
+Negative binomial model on lesion status comparing green tissue from lesioned versus non-lesioned blades at the taxonomic level of family. Plot differentially abundant families by lesion status. 
+
+```{r Neg Binomial Model Family}
+# run model with Wald test fit parametric and sfType poscounts
+# poscounts works well for metagenomic data with genes/ESVs with 0 counts across multiple samples
+Mod1GreenFamily <- DESeq(DeblurTableGreenTissueGlomFamilyNADS2Obj, test="Wald", fitType="parametric", sfType = "poscounts")
+
+# model comparisons
+resultsNames(Mod1GreenFamily) # green.tissue.non.lesioned.blade_vs_green.tissue.lesioned.blade; green tissue non-lesioned blade is numerator for logfoldchange
+
+# save model output 
+OutputMod1GreenFamily = results(Mod1GreenFamily, contrast = c("LesionStatus", "lesioned blade", "non-lesioned blade"))
+# order results by adjusted p values
+OutputMod1GreenFamily = OutputMod1GreenFamily[order(OutputMod1GreenFamily$padj, na.last = NA), ]
+# set alpha cut off at 0.05
+alpha = 0.05
+# save only those with < alpha as sigtabGreen
+sigtabGreenFamily = OutputMod1GreenFamily[(OutputMod1GreenFamily$padj < alpha), ]
+# column bind sigtabGreen with taxonomic data using rownames as identifiers
+sigtabGreenFamily = cbind(as(sigtabGreenFamily, "data.frame"), 
+               as(tax_table(DeblurTablePhyloseqObjGreenTissueGlomFamilyNA)[rownames(sigtabGreenFamily), ], "matrix"))
+
+dim(sigtabGreenFamily) # 8 taxa differ between green tissue on lesioned blade and green tissue non-lesioned blade
+
+# remove columns to clean up table
+sigtabGreenFamilysubset <- subset(sigtabGreenFamily, select = -c(baseMean,Kingdom,pvalue,Genus,Species,stat))
+# remove row names
+rownames(sigtabGreenFamilysubset) <- NULL
+# round padj to four digits
+sigtabGreenFamilysubset$padj <- round(sigtabGreenFamilysubset$padj, digits = 4)
+# round fold change to two digits
+sigtabGreenFamilysubset$log2FoldChange <- round(sigtabGreenFamilysubset$log2FoldChange, digits = 2)
+# round fold change SE to two digits
+sigtabGreenFamilysubset$lfcSE <- round(sigtabGreenFamilysubset$lfcSE, digits = 2)
+# clean up colun names and taxonomic information
+names(sigtabGreenFamilysubset)[names(sigtabGreenFamilysubset)=="padj"] <- "Adjusted p-value"
+names(sigtabGreenFamilysubset)[names(sigtabGreenFamilysubset)=="log2FoldChange"] <- "Log2 fold change"
+names(sigtabGreenFamilysubset)[names(sigtabGreenFamilysubset)=="lfcSE"] <- "Log2 fold change SE"
+sigtabGreenFamilysubset$Family <- gsub("KD3-93", "Sphingobacteriales KD3-93", sigtabGreenFamilysubset$Family)
+# remove taxa do not represent bacterial families
+sigtabGreenFamilysubset <- sigtabGreenFamilysubset %>% 
+  filter(sigtabGreenFamilysubset$Family != "Synechococcales_Incertae_Sedis", 
+         sigtabGreenFamilysubset$Family != "Sphingobacteriales KD3-93")
+
+write.csv(sigtabGreenFamilysubset,"../../out_files/DESeq2GreenLesionedBladeGreenNonLesionedBladeGlomFamilies.csv", row.names = FALSE)
+
+# use rarefied table for plots
+GreenOnly4660PhyloseqObjGlomFamilyNA # 248 samples; fewer due to rarefaction
+ 
+# convert to relative abundance
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbund <- transform_sample_counts(GreenOnly4660PhyloseqObjGlomFamilyNA, function(x){(x / sum(x))*100})
+
+# subset otu_table by taxa of interest
+otu_subset <-  subset(otu_table(GreenOnly4660PhyloseqObjGlomFamilyNARelAbund), rownames(otu_table(GreenOnly4660PhyloseqObjGlomFamilyNARelAbund)) %in% rownames(sigtabGreenFamily))
+ 
+#create new phyloseq object with subsetted OTU table
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseq <- merge_phyloseq(otu_subset, tax_table(GreenOnly4660PhyloseqObjGlomFamilyNARelAbund), sample_data(GreenOnly4660PhyloseqObjGlomFamilyNARelAbund))
+
+# print phyloseq object details
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseq # 6 families by 248 samples due to rarefaction; 2 families lost following rarefaction
+
+# subset phyloseq object to Cellvibrionaceae; this affects the otu_table & tax_table
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqCellvibrionaceae <- subset_taxa(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseq, Family == "Cellvibrionaceae")
+# print phyloseq object details
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqCellvibrionaceae # 1 family
+
+# meltphyloseq object with families that differ between green tissue lesioned blade and green tissue non-lesioned blade from rarefied tables
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt <- psmelt(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseq)
+
+# melt phyloseq object with only the Cellvibrionaceae family 
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqCellvibrionaceaeMelt <- psmelt(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqCellvibrionaceae)
+
+# rename lesion status for plotting
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt$LesionStatus <- gsub("lesioned blade", "LB", GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt$LesionStatus)
+
+# rename lesion status for plotting
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt$LesionStatus <- gsub("non-lesioned blade", "non-LB", GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt$LesionStatus)
+
+# unique families
+unique(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt$Family)
+
+# remove non-family taxa
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt <- GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt %>% filter(Family != "Synechococcales_Incertae_Sedis", Family != "KD3-93")
+
+# summary statistics on Cellvibrionaceae
+# vector of unique lesion status levels
+LesionStatus2 <- unique(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqCellvibrionaceaeMelt$LesionStatus)
+
+# initialize a list
+stat_table <- list()
+
+for(i in seq_along(LesionStatus2)) {
+  # i-th element of `LesionStatus2` calculate summary statistics
+  F1=subset(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqCellvibrionaceaeMelt, LesionStatus == LesionStatus2[i])
+  MinRelAbund <- min(F1$Abundance)
+  MaxRelAbund <- max(F1$Abundance)
+  MeanRelAbund <- mean(F1$Abundance)
+  out_row <- data.frame(lesion_status=LesionStatus2[i],minimum_percent_relative_abundance=MinRelAbund,maximum_percent_relative_abundance=MaxRelAbund, mean_percent_relative_abundance=MeanRelAbund)
+  out_row$minimum_percent_relative_abundance <- round(out_row$minimum_percent_relative_abundance, digits = 2)
+  out_row$maximum_percent_relative_abundance <- round(out_row$maximum_percent_relative_abundance, digits = 2)
+  out_row$mean_percent_relative_abundance <- round(out_row$mean_percent_relative_abundance, digits = 2)
+  stat_table[[i]] <- out_row
+  
+  print(stat_table[i])
+}
+
+# bind rows into table with Pearson's correlation coefficient and p-value 
+Summary_table_relative_abundances_Cellvibrionaceae <- bind_rows(stat_table)
+
+write.csv(Summary_table_relative_abundances_Cellvibrionaceae,"../../out_files/Summary_table_relative_abundances_CellvibrionaceaeGreenOnly.csv", row.names = FALSE)
+
+# vector of tableau20 hexidecimal codes
+col2 =  c("#4E79A7", "#A0CBE8", "#F28E2B", "#FFBE7D", "#59A14F", "#8CD17D", "#B6992D", "#F1CE63", "#499894", "#86BCB6", "#E15759", "#FF9D9A", "#79706E", "#BAB0AC", "#D37295", "#FABFD2", "#B07AA1", "#D4A6C8", "#9D7660", "#D7B5A6")
+
+# subset 6 colors of tableau20; keeping Cellvibrionanceae, Methylophilaceae, & Methylophagaceae the same color as other plots in manuscript
+col2subset =  c("#4E79A7", "#F28E2B", "#59A14F", "#499894", "#E15759", "#BAB0AC")
+
+# plot all predictive families for tissue type
+# translucent boxplots with outliers omitted from visualization, jitter datapoints
+FamilyplotGreen <- ggplot(data = GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxaTableDeseqMelt, 
+       aes(x = LesionStatus, y = Abundance)) + 
+  geom_point(size = 5, alpha = 0.5, position = position_jitter(width = 0.1), mapping = aes(color = Family)) + 
+  geom_boxplot(alpha = 0, outlier.shape = NA) +
+  scale_colour_manual(values = col2subset) +
+  theme(legend.title = element_text(size=16), legend.text = element_text(size=16), axis.text.y=element_text(size=10), axis.title = element_text(size = 16)) +
+  theme(strip.text.x = element_text(size = 16)) +
+  facet_wrap(facets = "Family", scales = "free_y") +
+  ylab("Relative abundance (%)") +
+  xlab("Lesion status") + 
+  labs(shape = "Region") +
+  theme(strip.text.x = element_blank()) +
+  theme(strip.text.y = element_blank()) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.9, hjust=1, size = 12))
+
+FamilyplotGreen
+
+ggsave(file = "../../plots/GreenOnlyDESeq2GlomFamilyRelAbundRarefiedTableBoxPlot.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```

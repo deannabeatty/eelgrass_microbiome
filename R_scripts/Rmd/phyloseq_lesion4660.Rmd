@@ -1,0 +1,200 @@
+---
+title: "Microbial community analyses on lesion blade samples rarefied at 4660 sequences per sample"
+author: "DSB"
+output: pdf_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, include = TRUE, fig.show=TRUE) #global options
+```
+
+Package versions for phyloseq, vegan, ggplot2, plyr, data.table, tidyverse, knitr, nlme, mgcv
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# print messages, warning FALSE
+library(phyloseq); packageVersion("phyloseq")
+library(vegan); packageVersion("vegan")
+library(ggplot2); packageVersion("ggplot2")
+library(plyr); packageVersion("plyr")
+library(data.table); packageVersion("data.table")
+library(tidyverse); packageVersion("tidyverse")
+library(knitr); packageVersion(("knitr"))
+library(nlme); packageVersion("nlme")
+library(mgcv); packageVersion("mgcv")
+gsub("[[:punct:][:space:]]", "-", Sys.time())
+```
+
+```{r read in data}
+LesionBladeOnly4660PhyloseqObj <- readRDS(file = "../../phyloseq_object/LesionBladeOnly4660PhyloseqObj.rds")
+
+# order factor levels
+sample_data(LesionBladeOnly4660PhyloseqObj)$RegionName <-factor(sample_data(LesionBladeOnly4660PhyloseqObj)$RegionName, 
+  levels=c("Alaska", "British Columbia", "Washington", "Oregon", "Bodega", "San Diego"))
+
+# order factor levels
+sample_data(LesionBladeOnly4660PhyloseqObj)$Region <-factor(sample_data(LesionBladeOnly4660PhyloseqObj)$Region, levels=c("AK", "BC", "WA", "OR", "BB", "SD"))
+
+```
+
+Summary of phyloseq object
+```{r summarize}
+LesionBladeOnly4660PhyloseqObj
+
+```
+
+Betadiversity analyses on lesion blade samples (lesion and adjacent green tissue) with Bray Curtis dissimilarity index
+```{r betadiv Bray}
+
+#remove samples with missing SST data from MUR and GHRSST
+LesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved <- LesionBladeOnly4660PhyloseqObj %>%
+  subset_samples(!is.na (SST))
+
+#Bray Curtis on dataset after removing samples without SST data
+LesionBladeOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis = distance(LesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved, method = "bray")
+
+# PCoA ordination on Bray Curtis disimilarity matrix
+OrdinationLesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved = ordinate(LesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved, method = "PCoA", 
+distance = LesionBladeOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis)
+
+# extract metadata from dataset after removing samples without SST data
+Metadata <- data.frame(sample_data(LesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved))
+
+# obtain palette from NEJM
+mypalNEJM <- pal_nejm("default")(8)
+# plot colors 
+show_col(mypalNEJM)
+# vector of hexidecimal color codes
+mypalNEJM =  c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF", "#7876B1FF", "#6F99ADFF") 
+
+#plot ordination by SST thirty_day_max
+Lesion_Blade_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max <- plot_ordination(LesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved, OrdinationLesionBladeOnly4660PhyloseqObjSatelliteTempNARemoved, color = "RegionName") + 
+  geom_point(mapping = aes(size = thirty_day_max)) +
+  labs(size="Thirty-day max SST ºC",col= "Region") +
+  theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14) ) +
+  scale_colour_manual(values = mypalNEJM) +
+  guides(color = guide_legend(override.aes = list(size=6)))
+
+# visualize ordination; highly similar to ordination from green tissue samples from lesioned and non-lesioned blades only
+Lesion_Blade_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max
+
+# PERMANOVA (adonis) on Bray Curtis dissimilarity matrix
+BrayCurtisLesionBladeOnly4660Adonis <- adonis2(LesionBladeOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis ~ PrevalenceMean + SeverityMean + TissueType + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + SST + thirty_day_max + thirty_day_min + Region/LocationName, by = "terms", data = Metadata)
+BrayCurtisLesionBladeOnly4660Adonis
+
+#calculate multivariate dispersions for Lesion Status 
+BetadispLesionBladeOnly4660TissueType <- (betadisper(LesionBladeOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis, Metadata$TissueType))
+# permtest on dispersions
+permutest(BetadispLesionBladeOnly4660TissueType, pairwise = TRUE) # p =0.507
+BetadispLesionBladeOnly4660TissueType # green tissue lesioned blade= 0.6171; lesion tissue = 0.6213
+capture.output(BetadispLesionBladeOnly4660TissueType, file = "../../out_files/LesionBladeOnly4660/BetadispLesionBladeOnly4660TissueType.txt")
+capture.output(permutest(BetadispLesionBladeOnly4660TissueType), file = "../../out_files/LesionBladeOnly4660/BetadispLesionBladeOnly4660TissueTypePermutest.txt")
+
+```
+
+
+```{r alphadiv plots,eval=FALSE}
+#estimate alpha div metrics
+AlphaLesionBladeOnly4660 <- estimate_richness(LesionBladeOnly4660PhyloseqObj, measures = c("Observed", "Shannon"))
+
+#plot richness by prevalence
+PlotAlphaLesionBladeOnly4660 = plot_richness(LesionBladeOnly4660PhyloseqObj, x = "PrevalenceMean", color = "RegionName", shape = "TissueType", measures = c("Observed", "Shannon"))
+PlotAlphaLesionBladeOnly4660 + geom_point(size = 5) + scale_colour_manual(values = mypalNEJM) + labs(x ="Lesion prevalence per transect", col= "Region", shape = "Tissue type")
+
+```
+
+Alpha diversity analyses on lesion blades (lesion and adjacent green tissue)
+
+```{r alphadiv model}
+
+#estimate alpha div metrics
+AlphaLesionBladeOnly4660 <- estimate_richness(LesionBladeOnly4660PhyloseqObj, measures = c("Observed", "Shannon"))
+
+#make SampleID as factor
+AlphaLesionBladeOnly4660$SampleID <- rownames(AlphaLesionBladeOnly4660) %>% as.factor()
+
+#extract metadata from phyloseq object into a df, make SampleID as factor
+metadata <- data.frame(sample_data(LesionBladeOnly4660PhyloseqObj))
+metadata$SampleID <- rownames(metadata) %>% as.factor()
+
+# left join metadata with Alpha diversity by SampleID
+MetadataAlphaDivLesionBladeOnly <- metadata %>% 
+  unclass() %>% 
+  data.frame() %>% 
+  left_join(AlphaLesionBladeOnly4660, by = "SampleID")
+
+# summarize mean richness 
+diversity_means <- MetadataAlphaDivLesionBladeOnly %>%
+ group_by(RegionName) %>%
+ summarise(mean_richness = mean(Observed)) %>%
+ arrange(mean_richness)
+
+# summarize mean Shannon diversity
+diversity_means_shannon <- MetadataAlphaDivLesionBladeOnly %>%
+ group_by(RegionName) %>%
+ summarise(mean_shannon = mean(Shannon)) %>%
+ arrange(mean_shannon)
+
+# remove samples that lack SST data
+MetadataAlphaDivLesionBladeOnlySSTNARemoved <- MetadataAlphaDivLesionBladeOnly %>% 
+  filter(SST != "NA")
+
+# Richness
+# generalized additive model; avoid collinear variables BladeAreaMean, LongestBladeLength, thirty_day_max, thirty_day_min SST
+# poisson distribution common for count data (like richness), but assumes mean = variance (unlikely); negative binomial distribution
+mobservedgam <- gamm(Observed ~ PrevalenceMean + SeverityMean + TissueType + TidalHeight + DensityShootsMean + s(SheathLengthMean) + RegionName + SST,
+random = list(LocationName =~ 1),family = nb(), data = MetadataAlphaDivLesionBladeOnlySSTNARemoved)
+
+plot(mobservedgam$gam) # SheathLengthMean non-linear, use smoothing function
+plot(mobservedgam$lme) 
+plot(MetadataAlphaDivLesionBladeOnlySSTNARemoved$Observed) 
+mean(MetadataAlphaDivLesionBladeOnlySSTNARemoved$Observed) # 730
+var(MetadataAlphaDivLesionBladeOnlySSTNARemoved$Observed) # 45,428; suggests negative binomial distribution
+
+# summaries and anova on model
+mobservedgam
+summary(mobservedgam)
+summary(mobservedgam$gam)
+anova(mobservedgam$gam)
+
+mobservedgamm_anova <- anova(mobservedgam$gam)
+
+# model output as a dataframe
+Alpha_div_observed_lesion_blade_only_4660_gamm_LocationName_random_effect <- as.data.frame(mobservedgamm_anova$pTerms.table)
+
+write_csv(Alpha_div_observed_lesion_blade_only_4660_gamm_LocationName_random_effect, file = "../../out_files/Alpha_div_observed_lesion_blade_only_4660_gamm_LocationName_random_effect.csv")
+
+# smooth function model output as dataframe
+smoothfunctionrichness <- as.data.frame(mobservedgamm_anova$s.table)
+
+write_csv(smoothfunctionrichness,"../../out_files/Alpha_div_observed_lesion_blade_only_4660_gamm_LocationName_random_effect_smooth.csv")
+
+# Shannon diversity
+# build generalized additive model with smoothers for non-linear variables; avoid collinear variables BladeAreaMean, LongestBladeLength, thirty_day_max, thirty_day_min SST
+# gaussian distribution default; continuous data; shannon is derived but continous
+mshannongam <- gamm(Shannon ~ s(PrevalenceMean) + SeverityMean + TissueType + TidalHeight + DensityShootsMean + s(SheathLengthMean) + RegionName*SeverityMean + SST,
+random = list(LocationName =~ 1), data = MetadataAlphaDivLesionBladeOnlySSTNARemoved)
+
+plot(mshannongam$gam) # PrevalenceMean and sheathlength are not linear
+plot(mshannongam$lme) 
+plot(y = MetadataAlphaDivLesionBladeOnlySSTNARemoved$Shannon, x = MetadataAlphaDivLesionBladeOnlySSTNARemoved$PrevalenceMean)
+plot(y = MetadataAlphaDivLesionBladeOnlySSTNARemoved$Shannon, x = MetadataAlphaDivLesionBladeOnlySSTNARemoved$SST)
+plot(y = MetadataAlphaDivLesionBladeOnlySSTNARemoved$Shannon, x = MetadataAlphaDivLesionBladeOnlySSTNARemoved$SeverityMean)
+
+# summaries and anova on model
+mshannongam
+summary(mshannongam)
+summary(mshannongam$gam)
+anova(mshannongam$gam)
+
+mshannongam_anova <- anova(mshannongam$gam)
+
+# export model output to dataframe
+Alpha_div_shannon_lesion_blade_only_4660_gamm_LocationName_random_effect <- as.data.frame(mshannongam_anova$pTerms.table)
+
+write_csv(Alpha_div_shannon_lesion_blade_only_4660_gamm_LocationName_random_effect, file = "../../out_files/Alpha_div_shannon_lesion_blade_only_4660_gamm_LocationName_random_effect.csv")
+
+# export model output for smoothing function as a dataframe
+smoothfunctionrichnessshannon <- as.data.frame(mshannongam_anova$s.table)
+
+write_csv(smoothfunctionrichnessshannon,"../../out_files/Alpha_div_shannon_lesion_blade_only_4660_gamm_LocationName_random_effect_smooth.csv")
+
+```

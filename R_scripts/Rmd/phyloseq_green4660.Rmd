@@ -1,0 +1,975 @@
+---
+title: "Microbial analyses on green tissue samples rarefied at 4660 sequences per sample"
+author: "DSB"
+output: pdf_document
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(eval = TRUE, echo = FALSE, include = TRUE, fig.show=TRUE) #global options
+```
+
+Package versions for phyloseq, vegan, ggplot2, plyr, data.table, tidyverse, knitr, mgcv, ggsci, ggpubr, scales
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(phyloseq); packageVersion("phyloseq")
+library(vegan); packageVersion("vegan")
+library(ggplot2); packageVersion("ggplot2")
+library(plyr); packageVersion("plyr")
+library(data.table); packageVersion("data.table")
+library(tidyverse); packageVersion("tidyverse")
+library(knitr); packageVersion(("knitr"))
+library(mgcv); packageVersion("mgcv")
+library(ggsci); packageVersion("ggsci")
+library(ggpubr); packageVersion("ggpubr")
+library(scales); packageVersion("scales")
+gsub("[[:punct:][:space:]]", "-", Sys.time())
+```
+
+```{r load functions}
+source("correlate.R")  
+```
+
+```{r read in data}
+# read phyloseq object
+GreenOnly4660PhyloseqObj <- readRDS(file = "../../phyloseq_object/GreenOnly4660PhyloseqObj.rds")
+
+#order factor levels
+sample_data(GreenOnly4660PhyloseqObj)$RegionName <-factor(sample_data(GreenOnly4660PhyloseqObj)$RegionName, 
+                                                          levels=c("Alaska", "British Columbia", "Washington", "Oregon", "Bodega", "San Diego"))
+
+#order factor levels
+sample_data(GreenOnly4660PhyloseqObj)$Region <-factor(sample_data(GreenOnly4660PhyloseqObj)$Region, 
+                                                                levels=c("AK", "BC", "WA", "OR", "BB", "SD"))
+
+```
+
+Summary of phyloseq object
+```{r summarize}
+GreenOnly4660PhyloseqObj
+
+```
+
+Betadiversity on green tissue samples with Bray Curtis dissimilarity index
+
+```{r betadiv, warning=FALSE, fig.align='left'}
+
+# PERMANOVA and ordination on reduced dataset (removing samples that lack SST data)
+
+# remove samples with missing metadata of interest (e.g. satellite temps from MUR and GHRSST)
+GreenOnly4660PhyloseqObjSatelliteTempNARemoved <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(!is.na (SST))
+# print phyloseq object summary
+GreenOnly4660PhyloseqObjSatelliteTempNARemoved #215 samples
+
+# extract metadata associated with samples
+metadata <- data.frame(sample_data(GreenOnly4660PhyloseqObjSatelliteTempNARemoved))
+
+# calculate Bray Curtis disimilarity
+GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis = distance(GreenOnly4660PhyloseqObjSatelliteTempNARemoved, method = "bray")
+
+# PCoA ordination on Bray Curtis disimilarity matrix
+OrdinationGreenOnly4660DistanceBrayCurtisTempNARemoved = ordinate(GreenOnly4660PhyloseqObjSatelliteTempNARemoved, method = "PCoA", 
+distance = GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis)
+ 
+# obtain palette from NEJM
+mypalNEJM <- pal_nejm("default")(8)
+# plot colors 
+show_col(mypalNEJM)
+# vector of hexidecimal color codes
+mypalNEJM =  c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF", "#7876B1FF", "#6F99ADFF") 
+
+#plot ordination by SST thirty_day_max
+Green_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max <- plot_ordination(GreenOnly4660PhyloseqObjSatelliteTempNARemoved, OrdinationGreenOnly4660DistanceBrayCurtisTempNARemoved, color = "RegionName") + 
+  geom_point(mapping = aes(size = thirty_day_max)) +
+  labs(size="Thirty-day max SST ºC",col= "Region") +
+  theme(legend.title = element_text(size=14), legend.text = element_text(size=14), axis.text=element_text(size=14), axis.title = element_text(size = 14) ) +
+  scale_colour_manual(values = mypalNEJM) +
+  guides(color = guide_legend(override.aes = list(size=6)))
+
+Green_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max
+ggsave(Green_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max, file = "../../plots/Green_only_4660_Bray_Curtis_PCoA_Region_SST_thirty_day_max.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+# Adonis function (PERMANOVA)
+# LocationName (Meadow) is nested within Region
+# nesting LocationName in Region does not change model outcome only the model structure
+BrayCurtisGreenOnly4660Adonis <- adonis2(GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis ~ PrevalenceMean + SeverityMean + LesionStatus + TidalHeight + BladeAreaMean + DensityShootsMean + SheathLengthMean + LongestBladeLengthMean + SST + thirty_day_max + thirty_day_min + Region/LocationName, by = "terms", data = metadata)
+# print output of model
+BrayCurtisGreenOnly4660Adonis
+
+kable(BrayCurtisGreenOnly4660Adonis)
+write.csv(BrayCurtisGreenOnly4660Adonis, "../../out_files/Bray_Curtis_green_only_4660_adonis_LocationName_nested_Region.csv")
+
+# randomize order of factors and test for significance and effects sizes with adonis2
+reorder <- c("PrevalenceMean", "SeverityMean", "LesionStatus", "TidalHeight", "BladeAreaMean", "DensityShootsMean", "SheathLengthMean", "LongestBladeLengthMean", "SST", "thirty_day_max",  "thirty_day_min")
+reorder_1 <- sample(reorder)
+reorder_1
+#  "SST"                    "PrevalenceMean"         "DensityShootsMean"     
+#  "LongestBladeLengthMean" "SeverityMean"           "SheathLengthMean"      
+#  "TidalHeight"            "LesionStatus"           "thirty_day_max"        
+#  "thirty_day_min"         "BladeAreaMean" 
+
+BrayCurtisGreenOnly4660AdonisReorder1 <- adonis2(GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis ~   SST +                    PrevalenceMean    +     DensityShootsMean  +   
+ LongestBladeLengthMean + SeverityMean      +     SheathLengthMean   +   
+ TidalHeight    +        LesionStatus    +       thirty_day_max  +      
+ thirty_day_min +  BladeAreaMean + Region/LocationName, by = "terms", data = metadata)
+# print model output
+BrayCurtisGreenOnly4660AdonisReorder1
+
+write.csv(BrayCurtisGreenOnly4660AdonisReorder1, "../../out_files/Bray_Curtis_green_only_4660_adonis_LocationName_nested_Region_Reorder1.csv")
+ 
+reorder_2 <- sample(reorder)
+reorder_2
+ #   "BladeAreaMean"          "thirty_day_min"         "SeverityMean"          
+ # "LongestBladeLengthMean" "TidalHeight"            "SST"                   
+ # "LesionStatus"           "SheathLengthMean"       "DensityShootsMean"     
+ # "PrevalenceMean"         "thirty_day_max" 
+ 
+BrayCurtisGreenOnly4660AdonisReorder2 <- adonis2(GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis ~   BladeAreaMean +          thirty_day_min     +    SeverityMean +         
+ LongestBladeLengthMean + TidalHeight    +        SST    +               
+ LesionStatus     +      SheathLengthMean   +    DensityShootsMean     +
+ PrevalenceMean    +     thirty_day_max + Region/LocationName, by = "terms", data = metadata)
+# print model output
+BrayCurtisGreenOnly4660AdonisReorder2
+
+write.csv(BrayCurtisGreenOnly4660AdonisReorder2, "../../out_files/Bray_Curtis_green_only_4660_adonis_LocationName_nested_Region_Reorder2.csv")
+ 
+reorder_3 <- sample(reorder)
+reorder_3
+ # "SeverityMean"           "BladeAreaMean"          "thirty_day_max"        
+ #  "SST"                    "PrevalenceMean"         "DensityShootsMean"     
+ # "LesionStatus"           "LongestBladeLengthMean" "thirty_day_min"        
+ # "SheathLengthMean"       "TidalHeight"
+ 
+BrayCurtisGreenOnly4660AdonisReorder3 <- adonis2(GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis ~  SeverityMean  +         BladeAreaMean    +      thirty_day_max   +     
+  SST         +           PrevalenceMean   +      DensityShootsMean +     
+ LesionStatus     +      LongestBladeLengthMean + thirty_day_min  +      
+ SheathLengthMean     +  TidalHeight  + Region/LocationName, by = "terms", data = metadata)
+# print model output
+BrayCurtisGreenOnly4660AdonisReorder3
+
+write.csv(BrayCurtisGreenOnly4660AdonisReorder3, "../../out_files/Bray_Curtis_green_only_4660_adonis_LocationName_nested_Region_Reorder3.csv")
+
+#calculate multivariate dispersions for region
+BetadispGreenOnly4660Region <- (betadisper(GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis, metadata$RegionName))
+# permtest on dispersions
+permutest(BetadispGreenOnly4660Region, pairwise = TRUE)
+# print dispersions
+BetadispGreenOnly4660Region
+
+capture.output(BetadispGreenOnly4660Region, file = "../../out_files/BetadispGreenOnly4660Region.txt")
+capture.output(permutest(BetadispGreenOnly4660Region, pairwise = TRUE), file = "../../out_files/BetadispGreenOnly4660RegionPermTest.txt")
+
+# calculate multivariate dispersions for Lesion Status 
+BetadispGreenOnly4660LesionStatus <- (betadisper(GreenOnly4660SatelliteTempNASamplesRemovedDistanceBrayCurtis, metadata$LesionStatus))
+# permtest on dispersions
+permutest(BetadispGreenOnly4660LesionStatus) # p =0.83
+# print dispersions 
+BetadispGreenOnly4660LesionStatus # lesioned blade= 0.6171; non-lesioned blade = 0.6183
+
+capture.output(BetadispGreenOnly4660LesionStatus, file = "../../out_files/BetadispGreenOnly4660LesionStatus.txt")
+capture.output(permutest(BetadispGreenOnly4660LesionStatus), file = "../../out_files/BetadispGreenOnly4660LesionStatusPermutest.txt")
+
+```
+
+```{r corr explanatory variables}
+#remove samples with missing metadata of interest (e.g. satellite temps from MUR and GHRSST)
+GreenOnly4660PhyloseqObjSatelliteTempNARemoved <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(!is.na (SST))
+# print phyloseq summary
+GreenOnly4660PhyloseqObjSatelliteTempNARemoved #215 samples
+
+# extract metadata associated with samples
+metadata <- data.frame(sample_data(GreenOnly4660PhyloseqObjSatelliteTempNARemoved))
+
+# subset to factors for correlation analyses
+metadatasubset <- subset(metadata, select = c(PrevalenceMean, SeverityMean, BladeAreaMean, DensityShootsMean, SheathLengthMean, LongestBladeLengthMean, SST, thirty_day_max, thirty_day_min))
+
+# pairwise correlation test for each variable & plot
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+pairs(metadatasubset, upper.panel = panel.cor, panel = panel.smooth)
+
+# run correlation test, bind output into a dataframe 
+a <- cor.test(metadatasubset$LongestBladeLength, metadatasubset$SheathLengthMean)
+a_out <- data.frame(factor1= c("longest blade length mean"),factor2= c("sheath length mean"),correlation=a$estimate,p=a$p.value)
+
+b <- cor.test(metadatasubset$BladeAreaMean, metadatasubset$SheathLengthMean)
+b_out <- data.frame(factor1= c("blade area mean"),factor2= c("sheath length mean"),correlation=b$estimate,p=b$p.value)
+
+c <- cor.test(metadatasubset$BladeAreaMean, metadatasubset$LongestBladeLength)
+c_out <- data.frame(factor1= c("blade area mean"),factor2= c("longest blade length mean"),correlation=c$estimate,p=c$p.value)
+
+d <- cor.test(metadatasubset$SST, metadatasubset$thirty_day_max)
+d_out <- data.frame(factor1= c("SST"),factor2= c("thirty day max SST"),correlation=d$estimate,p=d$p.value)
+
+e <- cor.test(metadatasubset$SST, metadatasubset$thirty_day_min)
+e_out <- data.frame(factor1= c("SST"),factor2= c("thirty day min SST"),correlation=e$estimate,p=e$p.value)
+
+f <- cor.test(metadatasubset$thirty_day_max, metadatasubset$thirty_day_min)
+f_out <- data.frame(factor1= c("thirty day max SST"),factor2= c("thirty day min SST"),correlation=f$estimate,p=f$p.value)
+
+# row bind output of each test
+corr_out <- rbind(a_out, b_out, c_out, d_out, e_out, f_out)
+
+# round to three decimal places
+corr_out$correlation <- format(round(corr_out$correlation, 3), nsmall = 3)
+corr_out$p <- format(round(as.numeric(corr_out$p, 3)), nsmall = 3) # after rounding = 0.000 
+# assign a more meaningful value
+corr_out$p <- c("<0.001")
+
+write.csv(corr_out, file = "../../out_files/correlation_sig_factors.csv", row.names = FALSE)
+
+```
+
+Alphadiversity analyses on green tissue samples rarefied to 4660 sequences per sample plotted by region (richness), lesion prevalence per transect (shannon diversity)
+
+```{r alphadiv plots}
+#estimate alpha div metrics
+AlphaGreenOnly4660 <- estimate_richness(GreenOnly4660PhyloseqObj, measures = c("Observed", "Shannon"))
+
+#take row identifier SampleID as factor and add as column 
+AlphaGreenOnly4660$SampleID <- rownames(AlphaGreenOnly4660) %>% as.factor()
+
+#extract metadata from phyloseq object into a df, make SampleID as factor
+metadata <- data.frame(sample_data(GreenOnly4660PhyloseqObj))
+metadata$SampleID <- rownames(metadata) %>% as.factor()
+
+# left join metadata with alpha diversity by SampleID
+MetadataAlphaDivGreen <- metadata %>% 
+  unclass() %>% 
+  data.frame() %>% 
+  left_join(AlphaGreenOnly4660, by = "SampleID")
+
+# create summaries of mean richness for plots
+diversity_means_richness <- MetadataAlphaDivGreen %>%
+ group_by(RegionName) %>%
+ summarise(mean_richness = mean(Observed)) %>%
+ arrange(mean_richness)
+
+# create summaries of mean shannon diversity for plots
+diversity_means_shannon <- MetadataAlphaDivGreen %>%
+ group_by(RegionName) %>%
+ summarise(mean_shannon = mean(Shannon)) %>%
+ arrange(mean_shannon)
+
+MetadataAlphaDivGreenSSTNARemoved <- MetadataAlphaDivGreen %>% 
+  filter(SST != "NA")
+
+mypalNEJM =  c("#BC3C29FF", "#0072B5FF", "#E18727FF", "#20854EFF", "#7876B1FF", "#6F99ADFF") 
+
+A <- ggplot(MetadataAlphaDivGreenSSTNARemoved, aes(x = RegionName, y = Observed, 
+                                                          color = RegionName)) + 
+  geom_boxplot() +
+  geom_jitter(size = 5, width = 0.05) +
+  ylab("Richness") +
+  xlab("Region") + 
+  theme(text = element_text(size=15)) +
+  scale_colour_manual(values = mypalNEJM, name="Region") 
+A
+
+B <- ggplot(MetadataAlphaDivGreenSSTNARemoved, aes(x = PrevalenceMean, y = Shannon, 
+                                                          color = RegionName)) + 
+  geom_jitter(size = 5, width = 0.03) +
+  ylab("Shannon diversity") +
+  xlab("Lesion prevalence per transect") + 
+  theme(text = element_text(size=15)) +
+  scale_colour_manual(values = mypalNEJM, name="Region") 
+B
+# Extract the legend; returns a gtable to use in ggarange below
+leg <- get_legend(B)
+
+Figure3 <- ggarrange(A, B,
+                 labels = c("A", "B"), ncol = 1, nrow = 2, align = "hv", heights = c(1,1), legend.grob = leg, legend = "right")
+
+Figure3
+
+ggsave(Figure3, file = "../../plots/Wrap_Green_only_4660_alpha_diversity_PrevalenceMean.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+```{r alphadiv model}
+#estimate alpha diversity metrics
+AlphaGreenOnly4660 <- estimate_richness(GreenOnly4660PhyloseqObj, measures = c("Observed", "Shannon"))
+
+# build alphadiversity model without BladeAreaMean, SheathLengthMean, thirty_day_max, thirty_day_min, or LesionAreaMean due to correlation among factors 
+
+#extract SampleID from rownames and make as factor, add as column to df
+AlphaGreenOnly4660$SampleID <- rownames(AlphaGreenOnly4660) %>% as.factor()
+
+#extract metadata from phyloseq object 
+metadata <- data.frame(sample_data(GreenOnly4660PhyloseqObj))
+# make SampleID as factor
+metadata$SampleID <- rownames(metadata) %>% as.factor()
+
+# left join metadata with Alpha diversity by SampleID
+MetadataAlphaDivGreen <- metadata %>% 
+  unclass() %>% 
+  data.frame() %>% 
+  left_join(AlphaGreenOnly4660, by = "SampleID")
+
+MetadataAlphaDivGreenSSTNARemoved <- MetadataAlphaDivGreen %>% 
+  filter(SST != "NA")
+
+# generalized additive model on richness
+# poisson distribution common for count data (like richness), but assumes mean = variance (unlikely); negative binomial distribution is better
+mobservedgam <- gamm(Observed ~ s(PrevalenceMean) + SeverityMean + LesionStatus + TidalHeight + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = list(LocationName =~ 1), family = nb(), data = MetadataAlphaDivGreenSSTNARemoved)
+
+plot(mobservedgam$gam) # PrevalenceMean not linear
+plot(mobservedgam$lme)
+plot(MetadataAlphaDivGreenSSTNARemoved$Observed) 
+mean(MetadataAlphaDivGreenSSTNARemoved$Observed) # 728
+var(MetadataAlphaDivGreenSSTNARemoved$Observed) # 46,613 var not equal mean, suggests negative binomial distribution
+
+# summaries and anova
+mobservedgam
+summary(mobservedgam)
+summary(mobservedgam$gam)
+anova(mobservedgam$gam) #  Region is significant
+
+mobservedgamm_anova <- anova(mobservedgam$gam)
+capture.output(mobservedgamm_anova, file = "../../out_files/Alpha_div_observed_green_only_4660_gamm_LocationName_random_effect.txt")
+
+# export model output into a df to write out
+Alpha_div_observed_green_only_4660_gamm_LocationName_random_effect <- as.data.frame(mobservedgamm_anova$pTerms.table)
+
+write_csv(Alpha_div_observed_green_only_4660_gamm_LocationName_random_effect, "../../out_files/Alpha_div_observed_green_only_4660_gamm_LocationName_random_effect.csv")
+
+# export smooth function as df to write out
+smoothfunctionrichness <- as.data.frame(mobservedgamm_anova$s.table)
+
+write_csv(smoothfunctionrichness,"../../out_files/Alpha_div_observed_green_only_4660_gamm_LocationName_random_effect_smooth.csv")
+
+# generalized additive model with smoothing function for non-linear variables
+# gaussian distribution default; continuous data; shannon is derived but continuous
+mshannongam <- gamm(Shannon ~ s(PrevalenceMean) + SeverityMean + LesionStatus + TidalHeight + DensityShootsMean + SheathLengthMean + RegionName + SST,
+random = list(LocationName =~ 1), data = MetadataAlphaDivGreenSSTNARemoved)
+
+plot(mshannongam$gam) # PrevalenceMean is not linear
+plot(mshannongam$lme) 
+plot(y = MetadataAlphaDivGreenSSTNARemoved$Shannon, x = MetadataAlphaDivGreenSSTNARemoved$PrevalenceMean)
+
+# print summaries and anova
+mshannongam
+summary(mshannongam)
+summary(mshannongam$gam)
+anova(mshannongam$gam) # PrevalenceMean is significant
+mshannongamm_anova <- anova(mshannongam$gam) 
+
+capture.output(anova(mshannongam$gam), file = "../../out_files/Alpha_div_shannon_green_only_4660_gamm_LocationName_random_effect.txt")
+
+# export model output into dataframe to write as csv
+Alpha_div_shannon_green_only_4660_gamm_LocationName_random_effect <- as.data.frame(mshannongamm_anova$pTerms.table)
+
+write_csv(Alpha_div_shannon_green_only_4660_gamm_LocationName_random_effect, "../../out_files/Alpha_div_shannon_green_only_4660_gamm_LocationName_random_effect.csv")
+
+# export model smooth function into dataframe to write as csv
+smoothfunctionshannon <- as.data.frame(mshannongamm_anova$s.table)
+
+write_csv(smoothfunctionshannon,"../../out_files/Alpha_div_shannon_green_only_4660_gamm_LocationName_random_effect_smooth.csv")
+
+# correlation test between lesion prevalence mean per transect and Shannon diversity
+with(MetadataAlphaDivGreenSSTNARemoved, cor.test(PrevalenceMean, Shannon)) # pearsons correlation coefficient -0.29 p < 0.001
+
+```
+
+Top 10 predictive exact sequence variants (ESVs ~ bacterial species) from random forest ml model with 1000 decision trees that predict lesion prevalence per transect.  R = 0.68 (correlation), R^2 = 0.46 (variation observed in lesion prevalence that can be attributed to predictors, i.e., bacterial taxa) p < 0.001  
+
+```{r random forest top predictors plot lesion prevalence ESV, warning=FALSE}
+
+# read in predictor taxa and gini values from qiime2 random forest regression
+GreenOnlyPredictorsGiniPrevalenceMean <- read.table(file = "../../random_forest_qiime2/RandomForestPrevalenceMean4660EelgrassGreenOnlyReindexed1000Trees/feature_importance.tsv", header = TRUE)
+
+# subset df of predictor taxa by top 10 taxa
+GreenOnlyPredictorsGiniPrevalenceMeanTopTen <-  subset(GreenOnlyPredictorsGiniPrevalenceMean)[1:10,]
+
+# create ggplots of relative abundance & lesion prevalence with lm fit line
+
+# convert counts (rarefied at 4660) to relative abundances for plots before subsetting OTU table
+GreenOnly4660PhyloseqObjRelAbund <- transform_sample_counts(GreenOnly4660PhyloseqObj, function(x){x / sum(x) *100})
+
+# subset otu table (count table) by taxa of interest
+otu_subset_rel_abund <-  subset(otu_table(GreenOnly4660PhyloseqObjRelAbund), rownames(otu_table(GreenOnly4660PhyloseqObjRelAbund)) %in% GreenOnlyPredictorsGiniPrevalenceMeanTopTen$id)
+
+# create new phyloseq object from the subset otu table relative abundances
+GreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset <- merge_phyloseq(otu_subset_rel_abund, tax_table(GreenOnly4660PhyloseqObjRelAbund), sample_data(GreenOnly4660PhyloseqObjRelAbund))
+# print phyloseq object summary
+GreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset
+
+# melt phyloseq object into a dataframe
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset <-  psmelt(GreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset)
+# dimensions
+dim(MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset) 
+
+# gsub uncultured descriptor for family with higher taxonomic level
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset$Family <- gsub("uncultured", "Chitinophagales", MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset$Family)
+
+# print unique family level taxa
+unique(MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset$Family)
+# families
+ # "Rhodobacteraceae"   "Sphingomonadaceae"  "Granulosicoccaceae" "Arenicellaceae"    
+ # "Chitinophagales"    "Colwelliaceae"
+
+# list ESV ids (ordered by importance scores)
+GreenOnlyPredictorsGiniPrevalenceMeanTopTen$id
+# create vector of ESV ids ordered by importance scores
+ESV_order <- c("581d242bad9ed2dda0da3ee3edde3875", "72a4ab1287bbbf547556bc1aaab0fd26",
+  "603fea1d231c9967e8d36413c94ef2e2", "88db555d5990f97b010dbe4ea7fa9345",
+  "3db2b3fad27e19d3206e0dc9ad0770d0", "8c844be27ac7ecb678f452bd221acdb1",
+  "b59a69193b28bf328c6305b396bce0e3", "2c6009d79e0172fccb9fe2e8c471e6db",
+  "d36209cadc7e97bf81e2ba226bc5c233", "d842dc0d545e89ea881d5d1db9b97d61")
+
+# order ESVs by their gini score highest to lowest for ggplot
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset$OTU <-factor(MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset$OTU, levels=ESV_order)
+
+# plot predictive taxa for lesion prevalence per transect 
+ESVplot <- ggplot(data = MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset, 
+       aes(x = PrevalenceMean, y = Abundance)) + 
+  geom_point(size = 5, alpha = 0.7, position = position_jitter(width = 0.05), mapping = aes(shape = LesionStatus, color = Family)) + 
+  scale_color_locuszoom() +
+  geom_smooth(method='lm', color = "gray28", se = FALSE) +
+  theme(legend.title = element_text(size=16), legend.text = element_text(size=16), axis.text=element_text(size=16), axis.title = element_text(size = 16)) +
+  theme(strip.text.x = element_text(size = 16)) +
+  facet_wrap(facets = "OTU", scales = "free_y") +
+  ylab("Relative abundance %") +
+  xlab("Lesion prevalence per transect") + 
+  labs(shape = "Lesion status") +
+  scale_x_continuous(limits = c(-0.1,1.1)) +
+  theme(strip.text.x = element_blank()) # removes faceted ESV hash id
+
+ESVplot
+
+ggsave(file = "../../plots/Green_only_4660_Prevelance_random_forest_ESV_relative_abundance.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+# kable table of predictors, score, taxonomy, correlation
+# obtain taxa from phyloseq object of subset otu table
+dfgini<- data.frame((tax_table(GreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset)))
+# convert to data.table
+dfgini <- setDT(dfgini, keep.rownames = "id", )[]      
+# left join list of gini scores by taxa with full taxonomy data table
+dfgini <- left_join(GreenOnlyPredictorsGiniPrevalenceMeanTopTen, dfgini, by = "id")
+# change names of columns
+names(dfgini)[names(dfgini)=="id"] <- "ESV"
+names(dfgini)[names(dfgini)=="importance"] <- "Importance"
+# clean up taxonomy
+dfgini$Species <- gsub("uncultured_bacterium", "NA", dfgini$Species)
+dfgini$Genus <- gsub("uncultured", "NA", dfgini$Genus)
+dfgini$Family <- gsub("uncultured", "NA", dfgini$Family)
+dfgini[is.na(dfgini)] = "NA"
+dfgini$Species <- gsub("NA", "Unclassified", dfgini$Species)
+dfgini$Genus <- gsub("NA", "Unclassified", dfgini$Genus)
+dfgini$Family <- gsub("NA", "Unclassified", dfgini$Family)
+# round importance to four decimals
+dfgini$Importance <- round(dfgini$Importance, digits = 4)
+
+# subset to columns to keep
+dfginisubset <- subset(dfgini, select = -c(Kingdom, Phylum, Class))
+
+#dfginisubset
+kable(dfginisubset, row.names = FALSE)
+
+# subset df for correlate function (column 1: taxonomy, column 2: x_var, column 3: y_var); this function correlates each ESV abundance with some x variable, here lesion prevalence
+OTU_Prev_df <- MeltGreenOnly4660PhyloseqObjRelAbundPredictorPrevalenceMeanSubset[ , c("OTU", "LesionStatus", "PrevalenceMean", "Abundance")]
+ 
+# correlate each unique ESV relative abundance with lesion prevalence per transect
+# obtain unique list of OTUs
+gini_ESV <- unique(OTU_Prev_df$OTU)
+taxa <- OTU_Prev_df$OTU
+# pass these parameters in this order: df, x_var, y_var, taxa_list, taxa_level
+Prev_corr <- correlate(OTU_Prev_df, c("PrevalenceMean"), c("Abundance"), gini_ESV, taxa)
+#view(SST_corr)
+
+# rename column header for join by below
+Prev_corr <- Prev_corr %>% rename(ESV = "unique_taxa")
+
+# join output of correlation tests with data table of metadata
+PrevCorrESVTaxonomic <- left_join(dfginisubset, Prev_corr, by = "ESV")
+
+write.csv(PrevCorrESVTaxonomic,"../../out_files/GreenOnlyPredictorsGiniPrevalenceMeanTopTenESVs.csv", row.names = FALSE)
+
+```
+
+
+Top 10 predictive bacterial families from random forest ml model with 1000 decision trees that predict Lz lesion prevalence per transect.  R = 0.75 (correlation), R^2 = 0.56 (variation observed in lesion prevalence that can be attributed to predictors, i.e., bacterial families) p < 0.001
+
+
+```{r random forest top predictors of lesion prevalence from family taxa, warning=FALSE}
+
+# read in predictor taxa and gini values from qiime2 random forest regression
+GreenOnlyPredictorsGiniPrevalenceMeanFamily <- read.table(file = "../../random_forest_qiime2/RandomForestPrevalenceMean4660EelgrassGreenOnlyReindexed1000TreesL5Family/feature_importance.tsv", header = TRUE)
+
+# subset list of predictors by top importance scores
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamily <-  subset(GreenOnlyPredictorsGiniPrevalenceMeanFamily)[1:13,]
+
+# split the id string to obtain unique taxonomy, creates a list
+s <- strsplit(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamily$id, ";")
+#view(t(data.frame(s)))
+
+# create dataframe, add importance column & values, add columns of taxonomy & values of transposed string split (s) value by indexed location in t(s)
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf <- data.frame(Importance =
+                                                            GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamily$importance, Kingdom = t(data.frame(s))[,1], Phylum = t(data.frame(s))[,2], Class = t(data.frame(s))[,3], Order = t(data.frame(s))[,4], Family = t(data.frame(s))[,5])
+
+dim(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf) # 13 rows x 6 taxomony columns
+
+# clean the taxonomy names to match those in the tax_table(GreenOnly4660PhyloseqObj)
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Kingdom <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Kingdom, pattern = "d__", replacement = "")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Phylum <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Phylum, pattern = "p__", replacement = "")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Class <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Class, pattern = "c__", replacement = "")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Order <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Order, pattern = "o__", replacement = "")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Family <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Family, pattern = "f__", replacement = "")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Order <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Order, pattern = "__", replacement = "unclassified")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Family <- gsub(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Family, pattern = "__", replacement = "unclassified")
+
+# filter out uncultured and unclassified taxa at the family level
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf <- GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf %>% filter(Family != "uncultured")
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf <- GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf %>% filter(Family != "unclassified")
+# remove Kingdom & phylum classification from df
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf <- subset(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf, select = -c(Kingdom, Phylum))
+# round importance scores
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Importance <- round(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Importance, digits = 4)
+
+# print phyloseq summary
+GreenOnly4660PhyloseqObj # 23345 ESVs, 248 samples
+
+#merge ESVs that have the same classification at taxonomic rank family; creates a new phyloseq object, keep NAs to match qiime2 glom
+GreenOnly4660PhyloseqObjGlomFamilyNA = tax_glom(GreenOnly4660PhyloseqObj, taxrank = "Family", NArm = FALSE)
+# print phyloseq summary for glommed taxonomy
+GreenOnly4660PhyloseqObjGlomFamilyNA # 354 taxa glommed by family or NA with higher level classification; 248 samples
+
+# convert glom family phyloseq object to to relative abundance
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbund <- transform_sample_counts(GreenOnly4660PhyloseqObjGlomFamilyNA, function(x){x / sum(x) *100})
+
+# create list of families to keep for filtering phyloseq object below
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf$Family
+# vector of family taxa 
+KeepFamilies  <- c("Cellvibrionaceae", "Colwelliaceae", "Granulosicoccaceae", "Stappiaceae", "Saprospiraceae", "Hyphomonadaceae", "Methylophilaceae", "Amoebophilaceae", "Flavobacteriaceae", "Rickettsiaceae")
+
+# subset phyloseq object to taxa in keep families list; this affects the otu_table & tax_table
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxa <- subset_taxa(GreenOnly4660PhyloseqObjGlomFamilyNARelAbund, Family %in% KeepFamilies)
+
+# print summary of phyloseq object glommed and filtered to predictive family taxa
+GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxa # 10 taxa in otu and taxa table, 248 samples 
+
+# melt phyloseq object to a dataframe
+meltedglom_relabund <- psmelt(GreenOnly4660PhyloseqObjGlomFamilyNARelAbundSubsetTaxa)
+
+# create table of predictors, score, taxonomy, correlation between family taxa rel. abundance and lesion prevalence per transect
+
+# cor.test with one family relative abundance and lesion prevalence
+# Cellvibrionaceae <- subset(meltedglom_relabund, Family == "Cellvibrionaceae") 
+# with(Cellvibrionaceae, cor.test(meltedglom_relabund$Abundance, meltedglom_relabund$PrevalenceMean))
+
+# subset df for correlate function (column 1: taxonomy, column 2: x_var, column 3: y_var)
+Family_Prev_df <- meltedglom_relabund[ , c("Family", "LesionStatus", "PrevalenceMean", "Abundance")]
+ 
+#filter df by lesion status, to correlate each separately with lesion prevalence
+Family_Prev_lesioned_blade <-  Family_Prev_df %>% filter(LesionStatus == "lesioned blade")
+Family_Prev_non_lesioned_blade <-  Family_Prev_df %>% filter(LesionStatus == "non-lesioned blade")
+
+# correlate each unique family relative abundance with lesion prevalence per transect 
+# obtain unique list of OTUs
+gini_family <- unique(Family_Prev_df$Family)
+taxa <- Family_Prev_df$Family
+# pass these parameters in this order to the function correlate: df, x_var, y_var, taxa_list, taxa_level
+Prev_corr_family <- correlate(Family_Prev_df, c("PrevalenceMean"), c("Abundance"), gini_family, taxa)
+view(Prev_corr_family)
+# rename factor for joining below by 'Family'
+Prev_corr_family <- Prev_corr_family %>% rename(Family = "unique_taxa")
+
+# left join gini scores and taxonomy with correlation test output by 'Family'
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf <-
+  left_join(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf, Prev_corr_family, by = c("Family"))
+
+write.csv(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf,"../../out_files/GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamily.csv", row.names = FALSE)
+
+# correlation on Family_Prev_lesioned_blade; green tissue from lesion blades only
+# obtain unique list of OTUs
+gini_family <- unique(Family_Prev_lesioned_blade$Family)
+taxa <- Family_Prev_lesioned_blade$Family
+# pass these parameters in this order to function correlate: df, x_var, y_var, taxa_list, taxa_level
+Prev_corr_family_lesioned_blade <- correlate(Family_Prev_lesioned_blade, c("PrevalenceMean"), c("Abundance"), gini_family, taxa)
+view(Prev_corr_family_lesioned_blade)
+
+# rename factor to 'Family' for left_join by Family below
+Prev_corr_family_lesioned_blade <- Prev_corr_family_lesioned_blade %>% rename(Family = "unique_taxa")
+
+# join output of correlation tests with metadata for lesioned blade
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilyLesionedBlade <- 
+  left_join(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf, Prev_corr_family_lesioned_blade, by = c("Family"))
+
+write.csv(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilyLesionedBlade,"../../out_files/GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilyLesionedBlade.csv", row.names = FALSE)
+
+# correlation on Family_Prev_non_lesioned_blade; green tissue from non-lesioned blades only
+# obtain unique list of OTUs
+gini_family <- unique(Family_Prev_non_lesioned_blade$Family)
+taxa <- Family_Prev_non_lesioned_blade$Family
+# pass these parameters in this order to function correlate: df, x_var, y_var, taxa_list, taxa_level
+Prev_corr_family_non_lesioned_blade <- correlate(Family_Prev_non_lesioned_blade, c("PrevalenceMean"), c("Abundance"), gini_family, taxa)
+view(Prev_corr_family_non_lesioned_blade)
+
+# rename factor to 'Family' for left_join by Family below
+Prev_corr_family_non_lesioned_blade <- Prev_corr_family_non_lesioned_blade %>% rename(Family = "unique_taxa")
+
+# join output of correlation tests with metadata for non-lesioned blade
+GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilyNonLesionedBlade <- 
+  left_join(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydf, Prev_corr_family_non_lesioned_blade, by = c("Family"))
+
+write.csv(GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilyNonLesionedBlade,"../../out_files/GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilyNonLesionedBlade.csv", row.names = FALSE)
+
+# remove non-significant family taxa for plotting
+# create list of families to keep for filtering phyloseq object
+KeepFamilies  <- c("Cellvibrionaceae", "Colwelliaceae", "Granulosicoccaceae", "Stappiaceae", "Saprospiraceae", "Hyphomonadaceae", "Amoebophilaceae")
+
+# subset phyloseq object to taxa in keep families list; this affects the otu_table & tax_table
+meltedglom_relabund_sig_taxa <- meltedglom_relabund %>% filter(Family %in% KeepFamilies)
+
+# order family taxa by their gini score highest to lowest for ggplot
+meltedglom_relabund_sig_taxa$Family <-factor(meltedglom_relabund_sig_taxa$Family, levels=c("Cellvibrionaceae", "Colwelliaceae", "Granulosicoccaceae", "Stappiaceae", "Saprospiraceae", "Hyphomonadaceae", "Amoebophilaceae"))
+
+# plot predictive taxa for lesion prevalence per transect (PrevalenceMean) 
+FamilyPredictorsPrevalenceGreen <- ggplot(data = meltedglom_relabund_sig_taxa, aes(x = PrevalenceMean, y = Abundance)) + 
+  geom_point(size = 5, alpha = 0.5, position = position_jitter(width = 0.05), mapping = aes(shape = LesionStatus, color = Family)) +
+  scale_color_jco() +
+  geom_smooth(method='lm', color = "black", se = FALSE) +
+  theme(legend.title = element_text(size=16), legend.text = element_text(size=16), axis.text=element_text(size=16), axis.title = element_text(size = 16)) +
+  theme(strip.text.x = element_text(size = 16)) +
+  facet_wrap(facets = "Family", scales="free_y") +
+  ylab("Relative abundance %") +
+  xlab("Lesion prevalence per transect") +
+  labs(shape = "Lesion status") +
+  theme(strip.text.x = element_text(size = 14)) +
+  scale_x_continuous(limits = c(-0.1,1.1)) 
+FamilyPredictorsPrevalenceGreen
+
+ggsave(file = "../../plots/Green_only_4660_Prevelance_random_forest_families.png", dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+```{r random forest top predictors plot thirty-day max SST ESV, warning=FALSE}
+
+# read in predictor taxa and gini values 
+GreenOnlyPredictorsGiniThirtyDayMaxSST <- read.table(file = "../../random_forest_qiime2/RandomForestThirtyDayMaxSST4660EelgrassGreenOnlyReindexed1000Trees/feature_importance.tsv", header = TRUE)
+
+# subset df of predictor taxa by top 10 taxa
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTen <-  subset(GreenOnlyPredictorsGiniThirtyDayMaxSST)[1:10,]
+
+# create ggplots of relative abund & thirty day max SST with lm fit line
+
+#remove samples with missing metadata of interest (e.g. satellite temps from MUR and GHRSST)
+GreenOnly4660PhyloseqObjSatelliteTempNARemoved <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(!is.na (SST))
+
+# convert counts (rarefied at 4660) to relative abundances for plots (before subsetting OTU table!)
+GreenOnly4660PhyloseqObjSatelliteTempNARemovedRelAbund <- transform_sample_counts(GreenOnly4660PhyloseqObjSatelliteTempNARemoved, function(x){x / sum(x) *100})
+
+# subset otu table (count table) by taxa of interest
+otu_subset_rel_abund <-  subset(otu_table(GreenOnly4660PhyloseqObjSatelliteTempNARemovedRelAbund), rownames(otu_table(GreenOnly4660PhyloseqObjSatelliteTempNARemovedRelAbund)) %in% GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTen$id)
+
+# create new phyloseq object from the subset otu table relative abundances
+GreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset <- merge_phyloseq(otu_subset_rel_abund, tax_table(GreenOnly4660PhyloseqObjSatelliteTempNARemovedRelAbund), sample_data(GreenOnly4660PhyloseqObjSatelliteTempNARemovedRelAbund))
+
+# print phyloseq object summary
+GreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset # 10 by 215 samples
+
+# melt phyloseq object into a dataframe
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset <-  psmelt(GreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset)
+dim(MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset) 
+
+# gsub uncultured descriptor for family with higher taxonomic level
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$Family <- gsub("Synechococcales_Incertae_Sedis", "Synechococcales", MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$Family)
+
+# table of predictors, score, taxonomy, correlation
+# obtain taxa from phyloseq object of subset otu table
+dfgini<- data.frame((tax_table(GreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset)))
+# convert to data.table
+dfgini <- setDT(dfgini, keep.rownames = "id", )[]      
+# left join list of gini scores by taxa with full taxonomy data table
+dfgini <- left_join(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTen, dfgini, by = "id")
+# change names of columns
+names(dfgini)[names(dfgini)=="id"] <- "ESV"
+names(dfgini)[names(dfgini)=="importance"] <- "Importance"
+# clean up taxonomy
+dfgini$Species <- gsub("uncultured_bacterium", "NA", dfgini$Species)
+dfgini$Species <- gsub("uncultured_cyanobacterium", "NA", dfgini$Species)
+dfgini$Family <- gsub("Synechococcales_Incertae_Sedis", "Synechococcales", dfgini$Family)
+dfgini[is.na(dfgini)] = "NA"
+
+# subset to columns to keep
+dfgini <- subset(dfgini, select = -c(Kingdom, Species))
+
+# round importance to four decimals
+dfgini$Importance <- round(dfgini$Importance, digits = 4)
+
+# subset df for correlate function (column 1: taxonomy, column 2: x_var, column 3: y_var)
+OTU_SST_df <- MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset[ , c("OTU", "LesionStatus", "thirty_day_max", "Abundance")]
+ 
+# correlate each unique ESV relative abundance with thirty-day max SST using function correlate
+# obtain unique list of OTUs
+gini_ESV <- unique(OTU_SST_df$OTU)
+taxa <- OTU_SST_df$OTU
+ 
+# pass these parameters to the function correlate in this order: df, x_var, y_var, taxa_list, taxa_level
+SST_corr <- correlate(OTU_SST_df, c("thirty_day_max"), c("Abundance"), gini_ESV, taxa)
+#view(SST_corr)
+
+# rename column header for join by below
+SST_corr <- SST_corr %>% rename(ESV = "unique_taxa")
+
+# join output of correlation tests with data table of metadata
+ThirtyDayMaxSSTCorrESVTaxonomic <- left_join(dfgini, SST_corr, by = "ESV")
+
+write.csv(ThirtyDayMaxSSTCorrESVTaxonomic,"../../out_files/GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenESVs.csv", row.names = FALSE)
+
+# filter by lesion status
+OTU_SST_df_lesioned_blade <- OTU_SST_df %>% filter(LesionStatus == "lesioned blade")
+OTU_SST_df_nonlesioned_blade <- OTU_SST_df %>% filter(LesionStatus == "non-lesioned blade")
+
+# correlate lesioned blade only
+# pass these parameters to the function correlate in this order: df, x_var, y_var, taxa_list, taxa_level
+SST_corr_lesioned_blade <- correlate(OTU_SST_df_lesioned_blade, c("thirty_day_max"), c("Abundance"), gini_ESV, taxa)
+#view(SST_corr_lesioned_blade)
+
+# rename column header for join by below
+SST_corr_lesioned_blade <- SST_corr_lesioned_blade %>% rename(ESV = "unique_taxa")
+
+# join output of correlation tests with data table of metadata
+ThirtyDayMaxSSTCorrESVLesionedBladeTaxonomic <- left_join(dfgini, SST_corr_lesioned_blade)
+
+write.csv(ThirtyDayMaxSSTCorrESVLesionedBladeTaxonomic,"../../out_files/GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenESVsLesionedBlade.csv", row.names = FALSE)
+
+# correlate for non-lesioned blades only
+# pass these parameters to the function correlate in this order: df, x_var, y_var, taxa_list, taxa_level
+SST_corr_non_lesioned_blade <- correlate(OTU_SST_df_nonlesioned_blade, c("thirty_day_max"), c("Abundance"), gini_ESV, taxa)
+#view(SST_corr_non_lesioned_blade)
+
+# rename column header for join by below
+SST_corr_non_lesioned_blade <- SST_corr_non_lesioned_blade %>% rename(ESV = "unique_taxa")
+
+# join output of correlation tests with data table of metadata
+ThirtyDayMaxSSTCorrESVNonLesionedBladeTaxonomic <- left_join(dfgini, SST_corr_non_lesioned_blade)
+
+write.csv(ThirtyDayMaxSSTCorrESVNonLesionedBladeTaxonomic,"../../out_files/GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenESVsNonLesionedBlade.csv", row.names = FALSE)
+
+# print unique family level taxa
+unique(MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$Family)
+# families
+# "Pirellulaceae"                  "Rhodobacteraceae"              
+# "Saprospiraceae"                 "Synechococcales"
+# "Flavobacteriaceae"
+
+# print unique genus level taxa
+unique(MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$Genus)
+# genera
+# "Blastopirellula"        NA                       "Sulfitobacter"         
+# "Rubidimonas"            "Schizothrix_LEGE_07164"
+
+# print unique ESVs
+unique(MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$OTU)
+
+# pirellulaceae is the only taxa (ESV) without significant correlation with thirty day max SST, whether lesion status levels are correlated separately or together
+# remove Blastopirellula from table prior to plotting
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset <- MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset %>% filter(Family != "Pirellulaceae")
+
+# order taxa by their gini score highest to lowest for ggplot
+# print ESV ids
+view(ThirtyDayMaxSSTCorrESVTaxonomic)
+ThirtyDayMaxSSTCorrESVTaxonomic$ESV
+# 78402516426d441fe5eead7995fd33d6 corresponds to Pirellulaceae ESV hash id
+MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$OTU <-factor(MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset$OTU, 
+levels=c("3b378cdf727ecc9e432307b69b4e535d", "f1e34a944c48e9744652079b4e3599a9", "5734397274338099c5ea44f0580adebf", "a025382b46e6998beb63c8560687bf65", "581d242bad9ed2dda0da3ee3edde3875", "3610ea36519b5258a9e91cfec01b73f1", "bd795f935c846128284b358ffbdadc3c", "d5e712448bfd72d2dc329631613ec8e3", "a896c91c0dc9abac4e05b3e57c4acfb7"))
+
+# plot predictive taxa for factor thirty day max SST 
+ESVplot <- ggplot(data = MeltGreenOnly4660PhyloseqObjRelAbundPredictorThirtyDayMaxSSTSubset, 
+       aes(x = thirty_day_max, y = Abundance)) + 
+  geom_point(size = 5, alpha = 0.7, position = position_jitter(width = 0.05), mapping = aes(shape = LesionStatus, color = Family)) + 
+  scale_color_locuszoom() +
+  geom_smooth(method='lm', color = "gray28", se = FALSE) +
+  theme(legend.title = element_text(size=16), legend.text = element_text(size=16), axis.text=element_text(size=16), axis.title = element_text(size = 16)) +
+  theme(strip.text.x = element_text(size = 16)) +
+  facet_wrap(facets = "OTU", scales = "free_y") +
+  ylab("Relative abundance %") +
+  xlab("Thirty-day maximum SST ºC") + 
+  labs(shape = "Lesion status") +
+  scale_x_continuous(limits = c()) +
+  theme(strip.text.x = element_blank())
+ESVplot
+
+ggsave(file = "../../plots/Green_only_4660_thirty_day_max_SST_random_forest_ESV_relative_abundance_plot.png", 
+       dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
+
+```{r random forest top predictors of thirty day max SST from family taxa, warning=FALSE}
+
+# read in predictor taxa and gini values
+GreenOnlyPredictorsGiniThirtyDayMaxSSTFamily <- read.table(file = "../../random_forest_qiime2/RandomForestThirtyDayMaxSST4660EelgrassGreenOnlyReindexed1000TreesL5Family/feature_importance.tsv", header = TRUE)
+
+# subset list of predictors by top importance scores
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamily <-  subset(GreenOnlyPredictorsGiniThirtyDayMaxSSTFamily)[1:16,]
+
+# create a new data frame for string split of taxonomy GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamily$id
+#GreenOnlyPredictorsGiniPrevalenceMeanTopTenFamilydt = data.table(id = "", importance = "", d = "", p = "", c = "", o = "", f = "")
+
+# split the id string to obtain unique taxonomy, creates a list
+s <- strsplit(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamily$id, ";")
+#view(t(data.frame(s)))
+
+# create dataframe, add importance column & values, add columns of taxonomy & values of transposed string split (s) value by indexed location in t(s)
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf <- data.frame(Importance =
+                                                            GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamily$importance, Kingdom =
+                                                                    t(data.frame(s))[,1], Phylum = t(data.frame(s))[,2], Class =
+                                                                    t(data.frame(s))[,3], Order = t(data.frame(s))[,4], Family =
+                                                                    t(data.frame(s))[,5])
+
+view(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf) # 16 rows x 6 taxomony columns
+
+# clean the taxonomy names to match those in the tax_table(GreenOnly4660PhyloseqObj)
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Kingdom <- gsub(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Kingdom, pattern = "d__", replacement = "")
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Phylum <- gsub(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Phylum, pattern = "p__", replacement = "")
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Class <- gsub(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Class, pattern = "c__", replacement = "")
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Order <- gsub(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Order, pattern = "o__", replacement = "")
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Family <- gsub(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Family, pattern = "f__", replacement = "")
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Family <- gsub(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Family, pattern = "uncultured", replacement = "unclassified")
+
+# filter out non-meaningful classification
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf <- GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf %>% filter(Family != "WPS-2")
+
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf <- GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf %>% filter(Family != "Synechococcales_Incertae_Sedis")
+
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf <- GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf %>% filter(Family != "NS11-12_marine_group")
+
+# filter out unclassified taxa at the family level
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf <- GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf %>% filter(Family != "unclassified")
+
+# remove unnecessary columns
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf <- subset(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf, select = -c(Kingdom))
+
+# round importance scores
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Importance <- round(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Importance, digits = 4)
+
+# remove samples with missing metadata of interest (e.g. satellite temps from MUR and GHRSST) from phyloseq object
+GreenOnly4660PhyloseqObjSatelliteTempNARemoved <- GreenOnly4660PhyloseqObj %>%
+  subset_samples(!is.na (SST))
+
+#merge ESVs that have the same classification at taxonomic rank family; creates a new phyloseq object, keep NAs to match qiime2 glom
+GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNA = tax_glom(GreenOnly4660PhyloseqObjSatelliteTempNARemoved, taxrank = "Family", NArm = FALSE)
+# print phyloseq object summary
+GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNA # 354 taxa glommed by family or NA with higher level classification; 215 samples
+
+# convert glom family phyloseq object to to relative abundance
+GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNARelAbund <- transform_sample_counts(GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNA, function(x){x / sum(x) *100})
+
+# print family taxa of interest
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf$Family
+# create vector of families to keep for filtering phyloseq object below
+KeepFamilies  <- c("Leptolyngbyaceae", "Phormidesmiaceae", "Xenococcaceae", "Colwelliaceae", "Saprospiraceae", "Thiotrichaceae", "Chitinophagaceae", "Amoebophilaceae", "Flavobacteriaceae", "Alteromonadaceae")
+
+# subset phyloseq object to taxa in keep families list; this affects the otu_table & tax_table
+GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNARelAbundSubsetTaxa <- subset_taxa(GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNARelAbund, Family %in% KeepFamilies)
+
+# print phyloseq object summary
+GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNARelAbundSubsetTaxa # 10 taxa in otu and taxa table, 215 samples 
+
+# melt phyloseq object to a dataframe
+meltedglom_relabund <- psmelt(GreenOnly4660PhyloseqObjSatelliteTempNARemovedGlomFamilyNARelAbundSubsetTaxa)
+
+# cor.test with one family relative abundance and lesion prevalence
+# Cellvibrionaceae <- subset(meltedglom_relabund, Family == "Cellvibrionaceae") 
+# with(Cellvibrionaceae, cor.test(meltedglom_relabund$Abundance, meltedglom_relabund$PrevalenceMean))
+
+# subset df for correlate function (column 1: taxonomy, column 2: x_var, column 3: y_var)
+Family_SST_df <- meltedglom_relabund[ , c("Family", "LesionStatus", "thirty_day_max", "Abundance")]
+ 
+# filter by lesion status to correlate taxa with SST from lesion and non-lesioned blades separately
+Family_SST_lesioned_blade <-  Family_SST_df %>% filter(LesionStatus == "lesioned blade")
+Family_SST_non_lesioned_blade <-  Family_SST_df %>% filter(LesionStatus == "non-lesioned blade")
+
+# correlate each unique family relative abundance with thirty-day max SST 
+# obtain unique list of OTUs
+gini_family <- unique(Family_SST_df$Family)
+taxa <- Family_SST_df$Family
+ 
+# pass these parameters to function correlate in this order: df, x_var, y_var, taxa_list, taxa_level
+SST_corr_family <- correlate(Family_SST_df, c("thirty_day_max"), c("Abundance"), gini_family, taxa)
+view(SST_corr_family)
+
+# rename factor for left join below
+SST_corr_family <- SST_corr_family %>% rename(Family = "unique_taxa")
+
+# left join correlate output with metadata of interest
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamily <-
+  left_join(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf, SST_corr_family, by = c("Family"))
+
+write.csv(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamily,"../../out_files/GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamily.csv", row.names = FALSE)
+
+# correlation on Family_SST_lesioned_blade; run function correlate on green tissue from lesioned blade only
+# obtain unique list of OTUs
+gini_family <- unique(Family_SST_lesioned_blade$Family)
+taxa <- Family_SST_lesioned_blade$Family
+# pass these parameters to function correlate in this order: df, x_var, y_var, taxa_list, taxa_level
+SST_corr_family_lesioned_blade <- correlate(Family_SST_lesioned_blade, c("thirty_day_max"), c("Abundance"), gini_family, taxa)
+view(SST_corr_family_lesioned_blade)
+
+# rename factor for left join below
+SST_corr_family_lesioned_blade <- SST_corr_family_lesioned_blade %>% rename(Family = "unique_taxa")
+
+# join output of correlation tests with metadata for lesioned blade only
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilyLesionedBlade <- 
+  left_join(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf, SST_corr_family_lesioned_blade, by = c("Family"))
+
+write.csv(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilyLesionedBlade,"../../out_files/GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilyLesionedBlade.csv", row.names = FALSE)
+
+# correlation on Family_SST_non_lesioned_blade; run function correlate on green tissue from non-lesioned blade only
+# obtain unique list of OTUs
+gini_family <- unique(Family_SST_non_lesioned_blade$Family)
+taxa <- Family_SST_non_lesioned_blade$Family
+# pass these parameters to function correlate in this order: df, x_var, y_var, taxa_list, taxa_level
+SST_corr_family_non_lesioned_blade <- correlate(Family_SST_non_lesioned_blade, c("thirty_day_max"), c("Abundance"), gini_family, taxa)
+view(SST_corr_family_non_lesioned_blade)
+
+# change factor name for left join below
+SST_corr_family_non_lesioned_blade <- SST_corr_family_non_lesioned_blade %>% rename(Family = "unique_taxa")
+
+# join output of correlation tests with metadata for non-lesioned blade
+GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilyNonLesionedBlade <- 
+  left_join(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilydf, SST_corr_family_non_lesioned_blade, by = c("Family"))
+
+write.csv(GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilyNonLesionedBlade,"../../out_files/GreenOnlyPredictorsGiniThirtyDayMaxSSTTopTenFamilyNonLesionedBlade.csv", row.names = FALSE)
+
+# Colwelliaceae & Chitinophagaceae are not significantly correlated with 30 day maximum temperature 
+# in either levels of lesion status or together
+# remove these two families from the plot
+meltedglom_relabund <- meltedglom_relabund %>% filter(Family != "Colwelliaceae" & Family != "Chitinophagaceae")
+
+# order family taxa by their gini score highest to lowest for ggplot
+meltedglom_relabund$Family <-factor(meltedglom_relabund$Family, 
+                                                          levels=c("Leptolyngbyaceae", "Phormidesmiaceae", "Xenococcaceae", "Saprospiraceae", "Thiotrichaceae", "Amoebophilaceae", "Flavobacteriaceae", "Alteromonadaceae"))
+
+# plot predictive taxa for factor thirty day max SST
+FamilyPredictorsThirtyDayMaxSSTGreen <- ggplot(data = meltedglom_relabund, aes(x = thirty_day_max, y = Abundance)) + 
+  geom_point(size = 5, alpha = 0.7, position = position_jitter(width = 0.1), mapping = aes(color = Family, shape = LesionStatus)) +
+  scale_color_jco() +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  theme(legend.title = element_text(size=16), legend.text = element_text(size=16), axis.text=element_text(size=16), axis.title = element_text(size = 16)) +
+  theme(strip.text.x = element_text(size = 16)) +
+  facet_wrap(facets = "Family", scales="free_y") +
+  ylab("Relative abundance %") +
+  xlab("Thirty-day maximum SST ºC") +
+  labs(shape = "Lesion status") +
+  theme(strip.text.x = element_text(size = 14)) 
+
+FamilyPredictorsThirtyDayMaxSSTGreen
+ggsave(file = "../../plots/Green_only_4660_thirty_day_max_SST_random_forest_families_plot.png", dpi = 1000, device = "png", width = 11, height = 8.5, units = "in")
+
+```
